@@ -16,7 +16,7 @@ module Saasu
         elsif response.status == 404
           raise "Resource not found."
         else
-          raise "Server did not return a valid response. Response status: #{response.status}. Response body: #{response.body}"
+          raise "Server did not return a valid response. URL: #{request_url}. Response status: #{response.status}. Response body: #{response.body}"
         end
       end
 
