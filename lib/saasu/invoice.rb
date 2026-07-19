@@ -2,6 +2,10 @@ class Saasu::Invoice < Saasu::Base
   allowed_methods :show, :index, :destroy, :update, :create
   filter_by %W(InvoiceNumber PurchaseOrderNumber LastModifiedFromDate LastModifiedToDate TransactionType Tags TagSelection InvoiceFromDate InvoiceToDate InvoiceStatus PaymentStatus BillingContactId PageSize Page)
 
+  def self.sales_stats_summary(params = {})
+    Saasu::Client.request(:get, 'Invoices/SalesStatsSummary', params)
+  end
+
   def email(email_address = nil)
     if email_address.present?
       url = ['Invoice', id, 'email'].join('/')

@@ -15,6 +15,15 @@ require "saasu/search"
 require "saasu/user"
 require "saasu/file_identity"
 require "saasu/contact_aggregate"
+require "saasu/activity"
+require "saasu/journal"
+require "saasu/item_adjustment"
+require "saasu/item_transfer"
+require "saasu/brand"
+require "saasu/deleted_entity"
+require "saasu/payroll"
+require "saasu/lookup_data"
+require "saasu/reports"
 
 module Saasu
 end

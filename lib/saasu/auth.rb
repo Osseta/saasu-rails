@@ -9,6 +9,10 @@ module Saasu
       Saasu::Client.connection.authorization :Bearer, token
     end
 
+    def ping
+      Saasu::Client.request(:get, 'authorisation/ping')
+    end
+
     private
     def token_expired?
       @token_expiry ||= Date.yesterday
@@ -41,8 +45,16 @@ module Saasu
     end
 
     def get_access_token
-      result = Saasu::Client.connection.post('authorisation/token') do |request|
-        request.body = { grant_type: 'password', scope: 'full', username: Saasu::Config.username, password: Saasu::Config.password }.to_json
+      if Saasu::Config.two_factor_code.present?
+        url = 'authorisation/token-2fa'
+        body = { grant_type: 'password', scope: 'full', username: Saasu::Config.username, password: Saasu::Config.password, verification_code: Saasu::Config.two_factor_code }
+      else
+        url = 'authorisation/token'
+        body = { grant_type: 'password', scope: 'full', username: Saasu::Config.username, password: Saasu::Config.password }
+      end
+
+      result = Saasu::Client.connection.post(url) do |request|
+        request.body = body.to_json
       end
 
       unless result.status == 200

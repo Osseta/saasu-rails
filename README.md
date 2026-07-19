@@ -45,6 +45,20 @@ You can access the following objects:
 - Saasu::User
 - Saasu::FileIdentity
 - Saasu::ContactAggregate
+- Saasu::Activity
+- Saasu::Journal
+- Saasu::ItemAdjustment
+- Saasu::ItemTransfer
+- Saasu::Brand
+- Saasu::DeletedEntity
+- Saasu::Payroll::Employee
+- Saasu::Payroll::Entitlement
+- Saasu::Payroll::PayrollEntry
+- Saasu::Payroll::LeaveRequest
+- Saasu::Payroll::Timesheet
+- Saasu::Payroll::Payslip
+- Saasu::LookupData (countries, currencies, date_formats, industry_types, number_formats, zones)
+- Saasu::Reports (profit_and_loss_summary, profit_and_loss_summary_by_account_type)
 
 Usage examples:
 

@@ -19,6 +19,9 @@ RSpec.configure do |config|
   config.mock_with :rspec
   config.color = :enabled
   config.order = :random
+
+  # two_factor_code is a global class_attribute; a leaked value reroutes auth to token-2fa in unrelated specs
+  config.after(:each) { Saasu::Config.two_factor_code = nil }
 end
 
 RSpec::Expectations.configuration.on_potential_false_positives = :nothing
