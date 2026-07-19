@@ -23,7 +23,7 @@ class Saasu::Invoice < Saasu::Base
   # if there is problem getting the PDF you will get a runtime error
   #   e.g RuntimeError (Server did not return a valid response. URL: Invoice/9999/generate-pdf?FileId=9999. Response status: 400. Response body: Unable to perform the request.):
   #
-  # this can happen if the tempate_id is invalid
+  # this can happen if the template_id is invalid
   def generate_pdf(template_id = nil)
     if template_id.present?
       url = ['Invoice', id, 'generate-pdf'].join('/')
