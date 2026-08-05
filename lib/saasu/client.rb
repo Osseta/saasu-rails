@@ -2,6 +2,19 @@ require 'faraday'
 require 'faraday_middleware'
 
 module Saasu
+  # RuntimeError parent keeps pre-existing `rescue RuntimeError` callers working
+  class Error < RuntimeError
+    attr_reader :status, :body
+
+    def initialize(message, status: nil, body: nil)
+      super(message)
+      @status = status
+      @body = body
+    end
+  end
+
+  class NotFoundError < Error; end
+
   class Client
     class_attribute :connection
 
@@ -11,12 +24,13 @@ module Saasu
         request_url = url + "?FileId=#{Saasu::Config.file_id}"
         response = connection.send(method, request_url, params)
 
-        if response.status == 200
+        if (200..299).cover?(response.status)
           response.body
         elsif response.status == 404
-          raise "Resource not found."
+          raise NotFoundError.new("Resource not found.", status: response.status, body: response.body)
         else
-          raise "Server did not return a valid response. URL: #{request_url}. Response status: #{response.status}. Response body: #{response.body}"
+          raise Error.new("Server did not return a valid response. URL: #{request_url}. Response status: #{response.status}. Response body: #{response.body}",
+                          status: response.status, body: response.body)
         end
       end
 

@@ -1,4 +1,14 @@
 module Saasu
+  # Array of records plus the rest of the response envelope (paging, totals)
+  class Collection < Array
+    attr_reader :metadata
+
+    def initialize(records, metadata = {})
+      super(records)
+      @metadata = metadata
+    end
+  end
+
   class Base
     attr_reader :attributes
 
@@ -9,9 +19,7 @@ module Saasu
     def self.all
       validate_method_is_implemented_in_saasu_api(:index)
 
-      Saasu::Client.request(:get, resource_url.pluralize).values.first.map do |record|
-        self.new(record)
-      end
+      build_collection(Saasu::Client.request(:get, resource_url.pluralize))
     end
 
     def self.find(id)
@@ -19,26 +27,21 @@ module Saasu
 
       response = Saasu::Client.request(:get, resource_url(id))
 
-      if response.present?
-        self.new(response)
-      else
-        response.body
-      end
+      self.new(response) if response.present?
     end
 
     def self.where(params)
       validate_method_is_implemented_in_saasu_api(:index)
       validate_filters(params)
 
-      Saasu::Client.request(:get, resource_url.pluralize, params).values.first.map do |record|
-        self.new(record)
-      end
+      build_collection(Saasu::Client.request(:get, resource_url.pluralize, params))
     end
 
     def delete
       validate_method_is_implemented_in_saasu_api(:destroy)
 
-      if Saasu::Client.request(:delete, self.class.resource_url(id))["StatusMessage"] == "Ok"
+      response = Saasu::Client.request(:delete, self.class.resource_url(id))
+      if response.is_a?(Hash) && response["StatusMessage"] == "Ok"
         self['Id'] = nil
         true
       else
@@ -58,7 +61,7 @@ module Saasu
         Saasu::Client.request(:put, self.class.resource_url(id), @attributes)
       else
         validate_method_is_implemented_in_saasu_api(:create)
-        self['Id'] = Saasu::Client.request(:post, self.class.resource_url, @attributes).values.first
+        self['Id'] = self.class.extract_inserted_id(Saasu::Client.request(:post, self.class.resource_url, @attributes))
       end
 
       @attributes = Saasu::Client.request(:get, self.class.resource_url(id))
@@ -78,7 +81,7 @@ module Saasu
     def self.create(params)
       validate_method_is_implemented_in_saasu_api(:create)
 
-      id = Saasu::Client.request(:post, resource_url, params).values.first
+      id = extract_inserted_id(Saasu::Client.request(:post, resource_url, params))
       new(Saasu::Client.request(:get, resource_url(id)))
     end
 
@@ -87,7 +90,7 @@ module Saasu
     end
 
     def self.validate_method_is_implemented_in_saasu_api(method_name)
-      raise "This method is not currently supported by Saasu API" unless @api_methods.include?(method_name)
+      raise "This method is not currently supported by Saasu API" unless (@api_methods || []).include?(method_name)
     end
 
     def [](key)
@@ -100,9 +103,9 @@ module Saasu
 
     def method_missing meth, *args, &cb
       if meth.in?(getter_methods)
-        @attributes[meth.to_s.classify]
+        @attributes[meth.to_s.camelize]
       elsif meth.in?(setter_methods)
-        @attributes[meth.to_s.gsub('=','').classify] = args.flatten.compact.first
+        @attributes[meth.to_s.gsub('=','').camelize] = args.first
       else
         super meth, *args, &cb
       end
@@ -133,14 +136,38 @@ module Saasu
       @filters = params
     end
 
+    def self.collection_key(key = nil)
+      @collection_key = key if key
+      @collection_key || name.demodulize.pluralize
+    end
+
     def self.resource_url(id = nil)
       [name.demodulize.downcase, id].compact.join('/')
     end
 
     def self.validate_filters(params)
+      filters = @filters || []
       params.keys.each do |key|
-        raise "Filter not supported by Saasu API: #{key}. Supported filters: #{@filters.join(", ")}" unless key.to_s.in?(@filters)
+        raise "Filter not supported by Saasu API: #{key}. Supported filters: #{filters.join(", ")}" unless key.to_s.in?(filters)
       end
+    end
+
+    def self.build_collection(response)
+      key = if response.key?(collection_key)
+              collection_key
+            else
+              # legacy responses were unwrapped positionally; prefer the first array value
+              response.keys.find { |k| response[k].is_a?(Array) } || response.keys.first
+            end
+
+      records = Array(response[key]).map { |record| new(record) }
+      Collection.new(records, response.except(key))
+    end
+
+    def self.extract_inserted_id(response)
+      return nil unless response.is_a?(Hash)
+
+      response['InsertedEntityId'] || response['Id'] || response.values.first
     end
   end
 end
