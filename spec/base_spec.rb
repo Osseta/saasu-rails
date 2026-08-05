@@ -75,6 +75,94 @@ describe Saasu::Base do
     it 'raises an exception when a method is not implemented in Saasu API' do
       expect { Saasu::Test.create({}) }.to raise_error
     end
+
+    it 'raises the intended unsupported-method message when allowed_methods was never declared' do
+      expect { Saasu::TestBare.all }.
+        to raise_error(RuntimeError, /not currently supported by Saasu API/)
+    end
+  end
+
+  describe ".validate_filters" do
+    it 'raises the intended unsupported-filter message when no filters are declared' do
+      expect { Saasu::TestNoFilters.where(Anything: 1) }.
+        to raise_error(RuntimeError, /Filter not supported by Saasu API: Anything/)
+    end
+  end
+
+  describe "envelope unwrapping" do
+    it 'picks the collection by key even when it is not the first envelope entry' do
+      stub_request(:get, 'https://api.saasu.com/tests?FileId=777').
+        to_return(status: 200,
+                  body: { StatusMessage: 'Ok', Tests: [{ Id: 1 }, { Id: 2 }], TotalRecords: 2 }.to_json,
+                  headers: {'Content-Type'=>'application/json'})
+
+      expect(Saasu::Test.all.map(&:id)).to eq [1, 2]
+    end
+
+    it 'honours a per-class collection_key override' do
+      stub_request(:get, 'https://api.saasu.com/testrenamedcollections?FileId=777').
+        to_return(status: 200,
+                  body: { StatusMessage: 'Ok', Widgets: [{ Id: 5 }] }.to_json,
+                  headers: {'Content-Type'=>'application/json'})
+
+      expect(Saasu::TestRenamedCollection.all.first.id).to eq 5
+    end
+
+    it 'exposes non-collection envelope fields as metadata on list results' do
+      stub_request(:get, 'https://api.saasu.com/tests?FileId=777').
+        to_return(status: 200,
+                  body: { Tests: [{ Id: 1 }], TotalRecords: 42, CurrentPage: 3 }.to_json,
+                  headers: {'Content-Type'=>'application/json'})
+
+      records = Saasu::Test.all
+      expect(records).to be_an(Array)
+      expect(records.metadata).to eq({ "TotalRecords" => 42, "CurrentPage" => 3 })
+    end
+
+    it 'uses the inserted entity id from the insert envelope, not the first value' do
+      stub_request(:post, 'https://api.saasu.com/test?FileId=777').
+        with(body: { Name: 'InsertedIdTest' }).
+        to_return(status: 200,
+                  body: { StatusMessage: 'ok', InsertedEntityId: 555 }.to_json,
+                  headers: {'Content-Type'=>'application/json'})
+      stub_request(:get, 'https://api.saasu.com/test/555?FileId=777').
+        to_return(status: 200, body: { Id: 555 }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      expect(Saasu::Test.create(Name: 'InsertedIdTest').id).to eq 555
+    end
+  end
+
+  describe "#find with a blank response" do
+    it 'returns nil instead of crashing' do
+      stub_request(:get, 'https://api.saasu.com/test/55?FileId=777').
+        to_return(status: 200, body: '')
+
+      expect(Saasu::Test.find(55)).to be_nil
+    end
+  end
+
+  describe "plural attribute accessors" do
+    it 'reads plural attributes via method_missing' do
+      record = Saasu::Test.new('Tags' => ['a', 'b'])
+      expect(record.tags).to eq ['a', 'b']
+    end
+
+    it 'writes plural attributes via method_missing without singularizing or flattening' do
+      record = Saasu::Test.new('Tags' => [])
+      record.tags = ['a', 'b']
+      expect(record['Tags']).to eq ['a', 'b']
+      expect(record['Tag']).to be_nil
+    end
+  end
+
+  describe "#delete with a blank body" do
+    it 'returns false instead of crashing' do
+      record = Saasu::Test.new('Id' => 9)
+      stub_request(:delete, 'https://api.saasu.com/test/9?FileId=777').
+        to_return(status: 204, body: '')
+
+      expect(record.delete).to be false
+    end
   end
 
   private
@@ -135,4 +223,16 @@ end
 
 class Saasu::TestTwo < Saasu::Base
   allowed_methods :show
+end
+
+class Saasu::TestRenamedCollection < Saasu::Base
+  allowed_methods :index
+  collection_key 'Widgets'
+end
+
+class Saasu::TestBare < Saasu::Base
+end
+
+class Saasu::TestNoFilters < Saasu::Base
+  allowed_methods :index
 end
