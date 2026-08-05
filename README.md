@@ -116,6 +116,46 @@ Saasu::FileIdentity.all
 
 Note - Saasu uses .NET naming convention for fields and filters eg. GivenName, LastModifiedDate
 
+### Advanced invoice options
+
+Attributes are passed through to the API as-is, so request fields without a
+dedicated helper still work — set them in the attributes hash. Useful ones on
+invoice create/update:
+
+```ruby
+Saasu::Invoice.create({
+  'TransactionType' => 'S',
+  'Layout'          => 'S',
+  'TransactionDate' => '2026-08-06',
+  'LineItems'       => [{ 'Description' => 'Consulting', 'AccountId' => 123, 'TotalAmount' => 100.0 }],
+
+  # record a payment in the same call instead of a separate Saasu::Payment
+  'QuickPayment' => {
+    'DatePaid'          => '2026-08-06',
+    'BankedToAccountId' => 456,
+    'Amount'            => 100.0,
+    'Reference'         => 'INV-1 payment'
+  },
+
+  # email the invoice to the billing contact as part of the save
+  'SendEmailToContact' => true,
+  'EmailMessage'       => { 'Subject' => 'Your invoice', 'Body' => 'Thanks!' },
+
+  # attach files inline; AttachmentData is base64-encoded file content
+  'Attachments' => [{ 'Name' => 'terms.pdf', 'AttachmentData' => Base64.strict_encode64(File.binread('terms.pdf')) }]
+})
+```
+
+An existing invoice can also be emailed after the fact with
+`invoice.email` (to the billing contact) or `invoice.email('someone@example.com')`.
+
+### Date filters
+
+Pass dates to filters in `YYYY-MM-DD` format (e.g.
+`Saasu::Invoice.where(InvoiceFromDate: '2026-01-01', InvoiceToDate: '2026-01-31')`).
+It is the format the API documents for all date query args, and date-range
+filters generally need both the `From` and `To` ends supplied together.
+
 ## Contributing
 
 1. Fork it ( https://github.com/saasu/saasu2-ruby/fork )
