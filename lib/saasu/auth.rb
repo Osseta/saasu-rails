@@ -45,12 +45,14 @@ module Saasu
     end
 
     def get_access_token
+      scope = Saasu::Config.scope.presence || 'full'
+
       if Saasu::Config.two_factor_code.present?
         url = 'authorisation/token-2fa'
-        body = { grant_type: 'password', scope: 'full', username: Saasu::Config.username, password: Saasu::Config.password, verification_code: Saasu::Config.two_factor_code }
+        body = { grant_type: 'password', scope: scope, username: Saasu::Config.username, password: Saasu::Config.password, verification_code: Saasu::Config.two_factor_code }
       else
         url = 'authorisation/token'
-        body = { grant_type: 'password', scope: 'full', username: Saasu::Config.username, password: Saasu::Config.password }
+        body = { grant_type: 'password', scope: scope, username: Saasu::Config.username, password: Saasu::Config.password }
       end
 
       result = Saasu::Client.connection.post(url) do |request|

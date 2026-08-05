@@ -6,10 +6,17 @@ module Saasu
     # allowed params:
     # :scope - All, Transactions, Contacts, InventoryItems
     # :transaction_type - Sale, Purchase, Journal, Payroll
+    # :page, :page_size - paging
+    # :include_search_term_highlights - defaults to false
     def initialize(keywords, params = {})
+      @include_highlights = false
+
       if params.is_a?(Hash)
         @scope = params[:scope].presence || 'All'
         @transaction_type = "Transactions.#{params[:transaction_type]}" if params[:transaction_type].present?
+        @page = params[:page]
+        @page_size = params[:page_size]
+        @include_highlights = params.fetch(:include_search_term_highlights, false)
       else
         @scope = params
       end
@@ -44,8 +51,10 @@ module Saasu
 
     private
     def search_params
-      _params = { Scope: @scope, Keywords: @keywords, IncludeSearchTermHighlights: false }
+      _params = { Scope: @scope, Keywords: @keywords, IncludeSearchTermHighlights: @include_highlights }
       _params[:TransactionType] = @transaction_type if @transaction_type.present?
+      _params[:Page] = @page if @page.present?
+      _params[:PageSize] = @page_size if @page_size.present?
       _params
     end
 

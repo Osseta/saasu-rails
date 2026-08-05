@@ -1,7 +1,8 @@
 class Saasu::User < Saasu::Base
   def self.reset_password(username)
     raise "Username is required." if username.blank?
-    Saasu::Client.request(:post, 'User/reset-password', { Username: username })['StatusMessage']
+    # anonymous endpoint: must work for users who cannot authenticate
+    Saasu::Client.request(:post, 'User/reset-password', { Username: username }, authenticate: false)['StatusMessage']
   end
 
   def self.current

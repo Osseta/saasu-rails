@@ -46,5 +46,16 @@ describe Saasu::Client do
     it 'remains rescuable as RuntimeError for backwards compatibility' do
       expect(Saasu::Error.ancestors).to include(RuntimeError)
     end
+
+    it 'skips authentication, FileId and the Authorization header when authenticate: false' do
+      stub_request(:post, 'https://api.saasu.com/anonymous-endpoint').
+        to_return(status: 200, body: { StatusMessage: 'Ok' }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      Saasu::Client.request(:post, 'anonymous-endpoint', { A: 1 }, authenticate: false)
+
+      expect(a_request(:post, 'https://api.saasu.com/anonymous-endpoint').
+        with { |req| req.headers['Authorization'].nil? }).to have_been_made
+      expect(a_request(:post, 'https://api.saasu.com/authorisation/token')).not_to have_been_made
+    end
   end
 end

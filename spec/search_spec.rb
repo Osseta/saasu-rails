@@ -23,6 +23,26 @@ describe Saasu::Search do
       expect(a_request(:get, "https://api.saasu.com/search?FileId=777&IncludeSearchTermHighlights=false&Keywords=Customer&Scope=All&TransactionType=Transactions.Sale"))
         .to have_been_made
     end
+
+    it 'passes paging params' do
+      stub_request(:get, "https://api.saasu.com/search?FileId=777&IncludeSearchTermHighlights=false&Keywords=Customer&Scope=All&Page=2&PageSize=50").
+        to_return(status: 200, body: search_results.to_json, headers: {'Content-Type'=>'application/json'})
+
+      Saasu::Search.new('Customer', page: 2, page_size: 50).perform
+
+      expect(a_request(:get, "https://api.saasu.com/search?FileId=777&IncludeSearchTermHighlights=false&Keywords=Customer&Scope=All&Page=2&PageSize=50"))
+        .to have_been_made
+    end
+
+    it 'allows enabling search term highlights' do
+      stub_request(:get, "https://api.saasu.com/search?FileId=777&IncludeSearchTermHighlights=true&Keywords=Customer&Scope=All").
+        to_return(status: 200, body: search_results.to_json, headers: {'Content-Type'=>'application/json'})
+
+      Saasu::Search.new('Customer', include_search_term_highlights: true).perform
+
+      expect(a_request(:get, "https://api.saasu.com/search?FileId=777&IncludeSearchTermHighlights=true&Keywords=Customer&Scope=All"))
+        .to have_been_made
+    end
   end
 
   private

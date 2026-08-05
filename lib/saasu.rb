@@ -1,4 +1,5 @@
 require "saasu/version"
+require "saasu/constants"
 require "saasu/client"
 require "saasu/base"
 require "saasu/contact"

@@ -19,10 +19,18 @@ module Saasu
     class_attribute :connection
 
     class << self
-      def request(method, url, params = {})
-        Saasu::Auth.authenticate
-        request_url = url + "?FileId=#{Saasu::Config.file_id}"
-        response = connection.send(method, request_url, params)
+      def request(method, url, params = {}, authenticate: true)
+        request_url = if authenticate
+          Saasu::Auth.authenticate
+          url + "?FileId=#{Saasu::Config.file_id}"
+        else
+          url
+        end
+
+        response = connection.send(method, request_url, params) do |req|
+          # the shared connection carries the Bearer header from earlier authenticated calls
+          req.headers.delete('Authorization') unless authenticate
+        end
 
         if (200..299).cover?(response.status)
           response.body

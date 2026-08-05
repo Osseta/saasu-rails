@@ -1,0 +1,45 @@
+require 'spec_helper'
+
+describe Saasu::Auth do
+  before do
+    Saasu::Config.username = "user@saasu.com"
+    Saasu::Config.password = "password"
+    Saasu::Config.file_id  = 777
+
+    # Auth memoizes the token module-wide; clear it so this spec exercises the grant request
+    Saasu::Auth.instance_variable_set(:@access_token, nil)
+    Saasu::Auth.instance_variable_set(:@token_expiry, nil)
+  end
+
+  after do
+    Saasu::Config.scope = nil
+    Saasu::Auth.instance_variable_set(:@access_token, nil)
+    Saasu::Auth.instance_variable_set(:@token_expiry, nil)
+  end
+
+  describe "configurable OAuth scope" do
+    it 'requests the configured scope, including fileid context scopes' do
+      Saasu::Config.scope = 'view fileid:1234'
+
+      stub_request(:post, 'https://api.saasu.com/authorisation/token').
+        with(body: { grant_type: 'password', scope: 'view fileid:1234', username: 'user@saasu.com', password: 'password' }).
+        to_return(status: 200, body: { access_token: '12345', refresh_token: '67890', expires_in: 1000 }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      Saasu::Auth.authenticate
+
+      expect(a_request(:post, 'https://api.saasu.com/authorisation/token').
+        with(body: hash_including('scope' => 'view fileid:1234'))).to have_been_made
+    end
+
+    it 'defaults to the full scope' do
+      stub_request(:post, 'https://api.saasu.com/authorisation/token').
+        with(body: { grant_type: 'password', scope: 'full', username: 'user@saasu.com', password: 'password' }).
+        to_return(status: 200, body: { access_token: '12345', refresh_token: '67890', expires_in: 1000 }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      Saasu::Auth.authenticate
+
+      expect(a_request(:post, 'https://api.saasu.com/authorisation/token').
+        with(body: hash_including('scope' => 'full'))).to have_been_made
+    end
+  end
+end
