@@ -21,6 +21,7 @@ require 'saasi/file_identity'
 require 'saasi/invoice_attachment'
 require 'saasi/user'
 require 'saasi/search'
+require 'saasi/payroll'
 
 module Saasi
   def self.configure(&block)
