@@ -159,6 +159,54 @@ Pass dates to filters in `YYYY-MM-DD` format (e.g.
 It is the format the API documents for all date query args, and date-range
 filters generally need both the `From` and `To` ends supplied together.
 
+## Saasi — typed models
+
+`Saasi` is the typed successor namespace to `Saasu` (and the gem's future
+name). Every `Saasu::X` has a `Saasi::X` with snake_case typed attributes,
+coercion, client-side validation, and lossless passthrough of API fields the
+gem doesn't know yet (via `#extra`). Existing `Saasu::` code is unaffected —
+migrate class by class.
+
+```ruby
+invoice = Saasi::Invoice.find(33)
+invoice.transaction_date        # => #<Date 2026-08-06> (a real Date)
+invoice.total_amount            # => BigDecimal("110.0")
+invoice.line_items.first        # => #<Saasi::Invoice::LineItem>
+
+invoice = Saasi::Invoice.new(
+  invoice_type:     'Tax Invoice',
+  transaction_type: 'S',
+  layout:           'S',
+  transaction_date: Date.today,
+  line_items:       [{ description: 'Consulting', account_id: 123, total_amount: 100.0 }]
+)
+invoice.valid?                  # => true — checked before any HTTP
+invoice.save                    # raises Saasi::ValidationError when invalid
+
+Saasi::Invoice.new(transaction_typo: 'S')
+# => ActiveModel::UnknownAttributeError — typos fail at the call site
+```
+
+### Migrating from Saasu::
+
+| Legacy | Saasi |
+|---|---|
+| `Saasu::Invoice.find(33)['TransactionDate']` (string) | `Saasi::Invoice.find(33).transaction_date` (Date) |
+| `invoice['LineItems']` (array of hashes) | `invoice.line_items` (typed models) |
+| `Saasu::Config.configure { ... }` | `Saasi.configure { ... }` (same config) |
+| `rescue RuntimeError` | `rescue Saasi::Error` (same classes, aliased) |
+| server 400 on bad payload | `Saasi::ValidationError` before the request |
+
+Behaviour differences to know:
+- `save` validates first and raises `Saasi::ValidationError`; use `valid?` /
+  `errors` to check without saving.
+- `to_wire` omits nil fields — you cannot send an explicit JSON null through
+  the typed layer; drop to `#extra` or the legacy class for that.
+- API fields the gem doesn't declare are readable at `model.extra['TheField']`
+  and survive save round-trips.
+- Payroll models are untyped shells (the official SDK has no payroll
+  contract); their fields live in `#extra`.
+
 ## Contributing
 
 1. Fork it ( https://github.com/saasu/saasu2-ruby/fork )
