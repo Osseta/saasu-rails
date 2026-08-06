@@ -18,6 +18,7 @@ require 'saasi/contact_aggregate'
 require 'saasi/deleted_entity'
 require 'saasi/brand'
 require 'saasi/file_identity'
+require 'saasi/invoice_attachment'
 
 module Saasi
   def self.configure(&block)
