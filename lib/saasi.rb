@@ -14,6 +14,7 @@ require 'saasi/tax_code'
 require 'saasi/activity'
 require 'saasi/item_adjustment'
 require 'saasi/item_transfer'
+require 'saasi/contact_aggregate'
 
 module Saasi
   def self.configure(&block)
