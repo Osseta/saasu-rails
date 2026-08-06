@@ -25,4 +25,9 @@ describe Saasi do
     expect(error.model).to be model
     expect(error.message).to include('Name is bad')
   end
+
+  it 'aliases the raw-hash utility modules' do
+    expect(Saasi::LookupData).to be Saasu::LookupData
+    expect(Saasi::Reports).to be Saasu::Reports
+  end
 end

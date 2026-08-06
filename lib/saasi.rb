@@ -20,9 +20,13 @@ require 'saasi/brand'
 require 'saasi/file_identity'
 require 'saasi/invoice_attachment'
 require 'saasi/user'
+require 'saasi/search'
 
 module Saasi
   def self.configure(&block)
     Saasu::Config.configure(&block)
   end
+
+  LookupData = Saasu::LookupData
+  Reports    = Saasu::Reports
 end
