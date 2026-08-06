@@ -556,7 +556,9 @@ Nested validation cascades — add to the `Base` class body (instance side):
       wire = extra.reject { |key, _| self.class.wire_map.key?(key) || self.class.nested_map.key?(key) }
       self.class.wire_map.each do |key, attr_name|
         next if self.class.read_only_names.include?(attr_name)
-        value = public_send(attr_name)
+        # raw attribute value, NOT public_send: resources override readers (e.g.
+        # Invoice#id falls back to transaction_id) and to_wire must not leak that
+        value = attributes[attr_name.to_s]
         wire[key] = serialize_wire_value(value) unless value.nil?
       end
       self.class.nested_map.each do |key, nested|
