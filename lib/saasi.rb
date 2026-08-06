@@ -3,6 +3,7 @@ require 'active_model'
 require 'saasi/errors'
 require 'saasi/collection'
 require 'saasi/base'
+require 'saasi/invoice'
 
 module Saasi
   def self.configure(&block)
