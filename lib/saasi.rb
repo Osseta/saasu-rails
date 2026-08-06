@@ -10,6 +10,7 @@ require 'saasi/item'
 require 'saasi/account'
 require 'saasi/company'
 require 'saasi/journal'
+require 'saasi/tax_code'
 
 module Saasi
   def self.configure(&block)
