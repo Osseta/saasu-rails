@@ -1,6 +1,19 @@
 # spec/saasi/base_spec.rb
 require 'spec_helper'
 
+class Saasi::TestPart < Saasi::Base
+  attribute :code, :string
+  attribute :qty,  :integer
+end
+
+class Saasi::TestMachine < Saasi::Base
+  attribute :id, :integer
+  has_many :parts,    Saasi::TestPart
+  has_one  :main_part, Saasi::TestPart, wire_key: 'PrimaryPart'
+  attribute :serial, :string
+  read_only :serial
+end
+
 class Saasi::TestWidget < Saasi::Base
   attribute :id,          :integer
   attribute :given_name,  :string
@@ -76,6 +89,60 @@ describe Saasi::Base do
         'UpdatedUtc' => '2026-08-06T01:02:03Z',
         'Price' => 99.95
       )
+    end
+  end
+
+  describe 'nested models' do
+    it 'coerces hashes into typed nested models on read and write' do
+      machine = Saasi::TestMachine.from_wire(
+        'Id' => 1,
+        'Parts' => [{ 'Code' => 'A', 'Qty' => 2 }],
+        'PrimaryPart' => { 'Code' => 'B', 'Qty' => 1 }
+      )
+      expect(machine.parts.first).to be_a(Saasi::TestPart)
+      expect(machine.parts.first.qty).to eq 2
+      expect(machine.main_part.code).to eq 'B'
+
+      machine.parts = [{ code: 'C', qty: 9 }]
+      expect(machine.parts.first).to be_a(Saasi::TestPart)
+      expect(machine.parts.first.code).to eq 'C'
+    end
+
+    it 'serialises nested models and omits empty collections' do
+      machine = Saasi::TestMachine.new(id: 1)
+      expect(machine.to_wire).to eq({ 'Id' => 1 })
+
+      machine.main_part = Saasi::TestPart.new(code: 'B')
+      expect(machine.to_wire).to eq({ 'Id' => 1, 'PrimaryPart' => { 'Code' => 'B' } })
+    end
+
+    it 'round-trips nested wire hashes losslessly' do
+      wire = { 'Id' => 1, 'Parts' => [{ 'Code' => 'A', 'Qty' => 2, 'Surprise' => true }] }
+      expect(Saasi::TestMachine.from_wire(wire).to_wire).to eq wire
+    end
+
+    it 'excludes read_only names from to_wire but still reads them' do
+      machine = Saasi::TestMachine.from_wire('Id' => 1, 'Serial' => 'XYZ')
+      expect(machine.serial).to eq 'XYZ'
+      expect(machine.to_wire).to eq({ 'Id' => 1 })
+    end
+
+    it 'cascades validation into nested models' do
+      part_class = Class.new(Saasi::Base) do
+        attribute :code, :string
+        validates :code, presence: true
+      end
+      machine_class = Class.new(Saasi::Base) do
+        attribute :id, :integer
+        has_many :parts, part_class
+      end
+
+      machine = machine_class.new(parts: [{}])
+      expect(machine.valid?).to be false
+      expect(machine.errors[:parts]).to be_present
+
+      machine.parts = [{ code: 'A' }]
+      expect(machine.valid?).to be true
     end
   end
 end
