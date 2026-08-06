@@ -25,6 +25,7 @@ require "saasu/deleted_entity"
 require "saasu/payroll"
 require "saasu/lookup_data"
 require "saasu/reports"
+require "saasi"
 
 module Saasu
 end
