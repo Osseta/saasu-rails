@@ -118,33 +118,36 @@ Note - Saasu uses .NET naming convention for fields and filters eg. GivenName, L
 
 ### Advanced invoice options
 
-Attributes are passed through to the API as-is, so request fields without a
-dedicated helper still work — set them in the attributes hash. Useful ones on
-invoice create/update:
+An invoice create can carry a payment and/or send an email in the same API
+call. Use the helpers — they validate the field names, required values and
+date formats for you:
 
 ```ruby
-Saasu::Invoice.create({
+invoice = Saasu::Invoice.new(
   'TransactionType' => 'S',
   'Layout'          => 'S',
   'TransactionDate' => '2026-08-06',
-  'LineItems'       => [{ 'Description' => 'Consulting', 'AccountId' => 123, 'TotalAmount' => 100.0 }],
+  'LineItems'       => [{ 'Description' => 'Consulting', 'AccountId' => 123, 'TotalAmount' => 100.0 }]
+)
 
-  # record a payment in the same call instead of a separate Saasu::Payment
-  'QuickPayment' => {
-    'DatePaid'          => '2026-08-06',
-    'BankedToAccountId' => 456,
-    'Amount'            => 100.0,
-    'Reference'         => 'INV-1 payment'
-  },
+# record a payment in the same call instead of a separate Saasu::Payment
+# (create-time only: the API accepts QuickPayment on POST, never on PUT)
+invoice.add_quick_payment(date_paid: Date.today, banked_to_account_id: 456, amount: 100.0, reference: 'INV-1 payment')
 
-  # email the invoice to the billing contact as part of the save
-  'SendEmailToContact' => true,
-  'EmailMessage'       => { 'Subject' => 'Your invoice', 'Body' => 'Thanks!' },
+# email the invoice to the billing contact as part of the save;
+# with no arguments the API uses its default email template
+invoice.email_on_save(subject: 'Your invoice', body: 'Thanks!')
 
-  # attach files inline; AttachmentData is base64-encoded file content
-  'Attachments' => [{ 'Name' => 'terms.pdf', 'AttachmentData' => Base64.strict_encode64(File.binread('terms.pdf')) }]
-})
+invoice.save
 ```
+
+The same fields can be set directly in the attributes hash
+(`'QuickPayment' => { 'DatePaid' => ... }`, `'SendEmailToContact' => true`,
+`'EmailMessage' => { ... }`) — attributes are passed through to the API as-is.
+Note that neither field is returned on a GET.
+
+To attach a file to an invoice use `Saasu::InvoiceAttachment.upload(invoice_id, file)`
+— the `Attachments` field on the invoice payload itself is read-only.
 
 An existing invoice can also be emailed after the fact with
 `invoice.email` (to the billing contact) or `invoice.email('someone@example.com')`.
