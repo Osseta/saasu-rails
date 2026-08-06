@@ -16,6 +16,7 @@ require 'saasi/item_adjustment'
 require 'saasi/item_transfer'
 require 'saasi/contact_aggregate'
 require 'saasi/deleted_entity'
+require 'saasi/brand'
 
 module Saasi
   def self.configure(&block)
