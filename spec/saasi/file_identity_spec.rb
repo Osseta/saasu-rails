@@ -23,4 +23,10 @@ describe Saasi::FileIdentity do
 
     expect(Saasi::FileIdentity.find(888).name).to eq 'Other Biz'
   end
+
+  it 'returns nil for a blank find response' do
+    stub_request(:get, 'https://api.saasu.com/FileIdentity?FileId=888').
+      to_return(status: 200, body: '')
+    expect(Saasi::FileIdentity.find(888)).to be_nil
+  end
 end

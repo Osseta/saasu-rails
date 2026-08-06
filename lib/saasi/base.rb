@@ -70,6 +70,7 @@ module Saasi
           instance_variable_get("@#{name}") || instance_variable_set("@#{name}", [])
         end
         define_method("#{name}=") do |values|
+          values = [values] if values.is_a?(Hash)
           coerced = Array(values).map { |v| v.is_a?(Hash) ? klass.from_wire(v.stringify_keys) : v }
           instance_variable_set("@#{name}", coerced)
         end

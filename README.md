@@ -204,6 +204,8 @@ Behaviour differences to know:
   the typed layer; drop to `#extra` or the legacy class for that.
 - API fields the gem doesn't declare are readable at `model.extra['TheField']`
   and survive save round-trips.
+- Server-derived read-only fields (e.g. `CreatedDateUtc`, `PaymentStatus`) are
+  readable on fetched models but never sent back on save — the API owns them.
 - Payroll models are untyped shells (the official SDK has no payroll
   contract); their fields live in `#extra`.
 

@@ -29,8 +29,11 @@ module Saasi
     has_one :file_settings, FileSettings
 
     # Legacy find is FileIdentity?FileId=<id> returning a raw hash — wrap it here
+    # (unlike Saasu::Base.find, the legacy FileIdentity.find has no .present?
+    # guard, so a blank 200 body comes back as "" rather than nil — .presence
+    # normalizes that before we hand it to from_wire)
     def self.find(file_id)
-      from_wire(Saasu::FileIdentity.find(file_id))
+      (hash = Saasu::FileIdentity.find(file_id).presence) && from_wire(hash)
     end
 
     # Legacy update is a bare PUT FileIdentity (no id in path); generic #save can't express it

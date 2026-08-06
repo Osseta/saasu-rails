@@ -108,6 +108,12 @@ describe Saasi::Base do
       expect(machine.parts.first.code).to eq 'C'
     end
 
+    it 'accepts a single hash for a has_many writer' do
+      machine = Saasi::TestMachine.new
+      machine.parts = { code: 'solo' }
+      expect(machine.parts.first.code).to eq 'solo'
+    end
+
     it 'serialises nested models and omits empty collections' do
       machine = Saasi::TestMachine.new(id: 1)
       expect(machine.to_wire).to eq({ 'Id' => 1 })
