@@ -74,6 +74,30 @@ module Saasi
           instance_variable_set("@#{name}", coerced)
         end
       end
+
+      def find(id)
+        record = wraps.find(id)
+        from_wire(record.attributes) if record # legacy find returns nil on a blank 200 response
+      end
+
+      def all
+        wrap_collection(wraps.all)
+      end
+
+      def where(params)
+        wrap_collection(wraps.where(params))
+      end
+
+      def create(attrs = {})
+        new(attrs).tap(&:save)
+      end
+
+      private
+
+      def wrap_collection(legacy_collection)
+        metadata = legacy_collection.respond_to?(:metadata) ? legacy_collection.metadata : {}
+        Collection.new(legacy_collection.map { |record| from_wire(record.attributes) }, metadata)
+      end
     end
 
     validate :nested_models_are_valid
@@ -126,7 +150,53 @@ module Saasi
       wire
     end
 
+    def save
+      context = persisted? ? :update : :create
+      raise Saasi::ValidationError.new(self) unless valid?(context)
+
+      legacy = self.class.wraps.new(to_wire)
+      legacy.save
+      refresh_from(legacy.attributes)
+      true
+    end
+
+    def update(attrs)
+      assign_attributes(attrs)
+      save
+    end
+
+    def delete
+      result = self.class.wraps.new(to_wire).delete
+      clear_identity! if result
+      result
+    end
+
+    def persisted?
+      !id.nil?
+    end
+
+    def refresh_from(wire_hash)
+      # full reset first: fields absent from the response (write-only instructions,
+      # cleared values) must NOT survive as stale state
+      @extra = {}
+      self.class.nested_map.each_value do |nested|
+        instance_variable_set("@#{nested[:name]}", nil)
+      end
+      self.class.attribute_types.each_key do |name|
+        public_send("#{name}=", nil)
+      end
+      assign_wire(wire_hash)
+    end
+
     private
+
+    # id AND transaction_id: transaction resources fall back to transaction_id in #id,
+    # so clearing only id would leave the model looking persisted after deletion
+    def clear_identity!
+      %w(id transaction_id).each do |name|
+        public_send("#{name}=", nil) if self.class.attribute_types.key?(name)
+      end
+    end
 
     def serialize_wire_value(value)
       case value

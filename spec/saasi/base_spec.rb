@@ -146,3 +146,87 @@ describe Saasi::Base do
     end
   end
 end
+
+class Saasu::WidgetLegacy < Saasu::Base   # legacy side of the fixture pair
+  allowed_methods :show, :index, :destroy, :update, :create
+  filter_by %W(GivenName Page PageSize)
+  def self.resource_url(id = nil) = ['widgetlegacy', id].compact.join('/')
+end
+
+class Saasi::Widget < Saasi::Base
+  wraps Saasu::WidgetLegacy
+  attribute :id,         :integer
+  attribute :given_name, :string
+  validates :given_name, presence: true
+end
+
+describe 'CRUD delegation' do
+  before do
+    Saasu::Config.username = 'user@saasu.com'
+    Saasu::Config.password = 'password'
+    Saasu::Config.file_id  = 777
+    stub_request(:post, 'https://api.saasu.com/authorisation/token').
+      to_return(status: 200, body: { access_token: '12345', refresh_token: '67890', expires_in: 1000 }.to_json,
+                headers: { 'Content-Type' => 'application/json' })
+  end
+
+  it 'finds and wraps a record' do
+    stub_request(:get, 'https://api.saasu.com/widgetlegacy/5?FileId=777').
+      to_return(status: 200, body: { Id: 5, GivenName: 'Jack', Mystery: 'kept' }.to_json,
+                headers: { 'Content-Type' => 'application/json' })
+
+    widget = Saasi::Widget.find(5)
+    expect(widget.given_name).to eq 'Jack'
+    expect(widget.extra['Mystery']).to eq 'kept'
+    expect(widget).to be_persisted
+  end
+
+  it 'lists into a Saasi::Collection with metadata' do
+    stub_request(:get, 'https://api.saasu.com/widgetlegacies?FileId=777').
+      to_return(status: 200, body: { WidgetLegacys: [{ Id: 1 }], Total: 7 }.to_json,
+                headers: { 'Content-Type' => 'application/json' })
+
+    widgets = Saasi::Widget.all
+    expect(widgets.first).to be_a(Saasi::Widget)
+    expect(widgets.metadata).to eq({ 'Total' => 7 })
+  end
+
+  it 'creates via the legacy class and refreshes from the API' do
+    stub_request(:post, 'https://api.saasu.com/widgetlegacy?FileId=777').
+      with(body: { GivenName: 'Jack' }).
+      to_return(status: 200, body: { InsertedEntityId: 9 }.to_json, headers: { 'Content-Type' => 'application/json' })
+    stub_request(:get, 'https://api.saasu.com/widgetlegacy/9?FileId=777').
+      to_return(status: 200, body: { Id: 9, GivenName: 'Jack' }.to_json, headers: { 'Content-Type' => 'application/json' })
+
+    widget = Saasi::Widget.create(given_name: 'Jack')
+    expect(widget.id).to eq 9
+  end
+
+  it 'raises ValidationError before any HTTP when invalid' do
+    expect { Saasi::Widget.create({}) }.to raise_error(Saasi::ValidationError) do |error|
+      expect(error.errors[:given_name]).to be_present # key-based: locale-independent
+    end
+    expect(a_request(:post, 'https://api.saasu.com/widgetlegacy?FileId=777')).not_to have_been_made
+  end
+
+  it 'clears attributes and extras absent from the post-save response' do
+    stub_request(:post, 'https://api.saasu.com/widgetlegacy?FileId=777').
+      to_return(status: 200, body: { InsertedEntityId: 9 }.to_json, headers: { 'Content-Type' => 'application/json' })
+    stub_request(:get, 'https://api.saasu.com/widgetlegacy/9?FileId=777').
+      to_return(status: 200, body: { Id: 9 }.to_json, headers: { 'Content-Type' => 'application/json' })
+
+    widget = Saasi::Widget.new(given_name: 'Jack')
+    widget.save
+    expect(widget.id).to eq 9
+    expect(widget.given_name).to be_nil # not in the GET response — must not go stale
+  end
+
+  it 'deletes via the legacy class and clears the id' do
+    stub_request(:delete, 'https://api.saasu.com/widgetlegacy/5?FileId=777').
+      to_return(status: 200, body: { StatusMessage: 'Ok' }.to_json, headers: { 'Content-Type' => 'application/json' })
+
+    widget = Saasi::Widget.from_wire('Id' => 5)
+    expect(widget.delete).to be true
+    expect(widget.id).to be_nil
+  end
+end
