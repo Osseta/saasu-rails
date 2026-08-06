@@ -19,6 +19,7 @@ require 'saasi/deleted_entity'
 require 'saasi/brand'
 require 'saasi/file_identity'
 require 'saasi/invoice_attachment'
+require 'saasi/user'
 
 module Saasi
   def self.configure(&block)
