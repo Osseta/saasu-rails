@@ -8,6 +8,7 @@ require 'saasi/contact'
 require 'saasi/payment'
 require 'saasi/item'
 require 'saasi/account'
+require 'saasi/company'
 
 module Saasi
   def self.configure(&block)
