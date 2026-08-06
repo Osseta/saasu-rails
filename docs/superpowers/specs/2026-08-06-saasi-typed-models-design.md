@@ -68,7 +68,8 @@ spec/saasi/<file>_spec.rb    # one spec file per lib/saasi file (project convent
 `require 'saasu'` keeps working and exposes both namespaces. `lib/saasi.rb`
 does not require `saasu` (avoids the cycle; the gem's entry point is saasu).
 
-Dependency: `saasu2.gemspec` adds `spec.add_dependency 'activemodel', '>= 6.0'`.
+Dependency: `saasu2.gemspec` adds `spec.add_dependency 'activemodel', '>= 6.1'`
+(6.1 floor: the error-object API — `errors.attribute_names` — arrived in 6.1).
 This also (transitively) fixes the existing undeclared-activesupport bug.
 Remove the incorrect `webmock` runtime dependency from the gemspec if present
 (it belongs in development dependencies) — pre-existing defect, one line,
@@ -115,8 +116,12 @@ Mechanics:
   to it when `id` is nil, matching `Saasu::Base#id`.
 
 Round-trip law (property every model spec asserts):
-`Model.from_wire(h).to_wire == h` for any wire hash `h` whose values are
-already in canonical wire form, including undeclared keys.
+`Model.from_wire(h).to_wire == h` for any wire hash `h` containing only
+writable declared keys and undeclared keys, with values in canonical wire
+form (dates `YYYY-MM-DD`, datetimes whole-second ISO8601, decimals as JSON
+numbers). Read-only fields are readable but excluded from `to_wire` by
+design, so hashes containing them do not round-trip; they get a separate
+serialization assertion. (Amended per codex review, 2026-08-06.)
 
 ## CRUD semantics
 
@@ -128,9 +133,14 @@ already in canonical wire form, including undeclared keys.
 | `#save` | `validate!` → raise `Saasi::ValidationError` (carries `#model`, `#errors`) if invalid → build legacy instance from `to_wire` → legacy `save` → `refresh_from(legacy.attributes)` → `true` |
 | `#delete` | delegates to legacy instance `#delete`; clears local id on success |
 
-Validation contexts: `on: :create` validations run when the model has no id.
-`valid?` / `errors` usable standalone. Server-side errors are untouched
-(`Saasi::Error = Saasu::Error`, `Saasi::NotFoundError = Saasu::NotFoundError`).
+Validation: `[Required]`-derived presence validations are unconditional —
+updates serialize the full payload, so the API requires those fields in both
+contexts (amended per codex review; the earlier `on: :create` wording is
+superseded). Nested models ARE validated by the parent's `valid?` via a
+cascade that imports child errors (amended per codex review — previously a
+documented limitation). `valid?` / `errors` usable standalone. Server-side
+errors are untouched (`Saasi::Error = Saasu::Error`, `Saasi::NotFoundError =
+Saasu::NotFoundError`).
 
 `Saasi.configure` is an alias for `Saasu::Config.configure` (same underlying
 config; documented so migrated apps need no `Saasu` reference).

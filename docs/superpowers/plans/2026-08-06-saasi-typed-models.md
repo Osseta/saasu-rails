@@ -17,11 +17,25 @@
 - No `Saasu::` class may change behaviour. The only legacy-file edits in this plan are: `saasu2.gemspec` (Task 1) and the final `require` line in `lib/saasu.rb` (Task 1).
 - Spec files map 1:1 to lib files: `lib/saasi/foo.rb` → `spec/saasi/foo_spec.rb`. Never create task-named spec files.
 - Wire keys are exact PascalCase strings from the .NET SDK tables embedded in each task. Do not guess or "fix" apparent typos in them.
-- The round-trip law (asserted per resource): `Model.from_wire(h).to_wire == h` for any wire hash `h` whose values are in canonical wire form (JSON types; dates as `YYYY-MM-DD` strings; datetimes as ISO8601 strings), including undeclared keys.
+- The round-trip law (asserted per resource): `Model.from_wire(h).to_wire == h` for any wire hash `h` containing only WRITABLE declared keys and undeclared keys, with values in canonical wire form. Canonical wire form: JSON types; dates as `YYYY-MM-DD` strings; datetimes as whole-second ISO8601 strings (offset preserved; fractional seconds are NOT canonical); decimals as JSON numbers. Read-only fields are covered by a separate assertion (readable, excluded from `to_wire`) — a hash containing them does not round-trip by design.
+- Decimals serialize via `BigDecimal#to_f` — parity with the legacy layer, which already lives on floats parsed from JSON. Known ceiling: values beyond Float precision are out of contract (Saasu money is 2–3dp).
 - `to_wire` omits nil attributes and empty `has_many` collections; `false` is a value and MUST be emitted.
 - Type mapping from .NET (fixed table; every task uses it):
-  `string`→`:string` · `int`/`short`/`Int16`→`:integer` · `decimal`→`:decimal` · `bool`→`:boolean` · `DateTime` named `*Utc`/`LastModified*`/`Timestamp`→`:datetime` · other `DateTime`→`:date` · `List<string>`→`:string_array` · nested model→`has_one` · `List<Model>`→`has_many`.
-- Enum validations use `Saasu::Constants` values and always `allow_nil: true`. Presence validations only where the .NET `[Required]` annotation exists, with `on: :create` context unless stated otherwise.
+  `string`→`:string` · `int`/`short`/`Int16`/`long`/`byte`→`:integer` · `decimal`→`:decimal` · `bool`→`:boolean` · `DateTime` named `*Utc`/`LastModified*`/`Timestamp`→`:datetime` · other `DateTime`→`:date` · `List<string>`→`:string_array` · nested model→`has_one` · `List<Model>`→`has_many`.
+- Enum validations use `Saasu::Constants` values and always `allow_nil: true`. Presence validations only where the .NET `[Required]` annotation exists, UNCONDITIONAL (no `on:` context) — the API requires these fields on both insert and full-payload update, and updates serialize the full payload.
+- Resource classes subclass `Saasi::Base` directly. Deeper hierarchies (resource subclassing resource) are unsupported: `wraps` is not inherited and re-declaring an attribute with a different `wire_key` is undefined behaviour.
+- Every resource spec must include at least one WebMock delegation test proving the typed class hits the legacy URL — a find or a list. Where a task's spec code doesn't already include one, add a list test shaped like this (substitute the resource's index URL, collection key, and wire fixture):
+
+```ruby
+  it 'lists via the legacy class' do
+    stub_request(:get, 'https://api.saasu.com/<index-path>?FileId=777').
+      to_return(status: 200, body: { '<CollectionKey>' => [wire] }.to_json,
+                headers: { 'Content-Type' => 'application/json' })
+    expect(described_class.all.first).to be_a(described_class)
+  end
+```
+
+(with the standard config/auth `before` block from Task 5's spec if the file doesn't have one yet).
 - TDD per task: write the spec first, run it and see it fail, implement, see it pass, run the full suite, commit.
 
 ---
@@ -138,8 +152,10 @@ require "saasi"
 In `saasu2.gemspec`, add alongside the existing dependencies:
 
 ```ruby
-spec.add_dependency "activemodel", ">= 6.0"
+spec.add_dependency "activemodel", ">= 6.1"
 ```
+
+(6.1 floor, not 6.0: the specs use `errors.attribute_names`, which arrived in the ActiveModel 6.1 error-object API.)
 
 and if `webmock` is declared with `add_dependency`, change it to `add_development_dependency`.
 
@@ -240,9 +256,10 @@ describe Saasi::Base do
       expect(Saasi::TestWidget.from_wire(wire).to_wire).to eq wire
     end
 
-    it 'omits nil attributes but emits false' do
+    it 'omits nil attributes (including unset string_array) but emits false' do
       widget = Saasi::TestWidget.new(is_active: false)
       expect(widget.to_wire).to eq({ 'IsActive' => false })
+      expect(Saasi::TestWidget.new.to_wire).to eq({})
     end
 
     it 'serialises Date, Time and BigDecimal to wire form' do
@@ -273,6 +290,7 @@ Expected: FAIL — `uninitialized constant Saasi::Base`
 module Saasi
   class StringArrayType < ActiveModel::Type::Value
     def cast(value)
+      return if value.nil? # nil stays nil so to_wire omits the field; Array(nil) would emit []
       Array(value).map(&:to_s)
     end
   end
@@ -325,7 +343,8 @@ module Saasi
     end
 
     def to_wire
-      wire = extra.dup
+      # declared keys always win over stray extra entries, even when the declared value is nil
+      wire = extra.reject { |key, _| self.class.wire_map.key?(key) }
       self.class.wire_map.each do |key, attr_name|
         value = public_send(attr_name)
         wire[key] = serialize_wire_value(value) unless value.nil?
@@ -432,6 +451,24 @@ describe 'nested models' do
     expect(machine.serial).to eq 'XYZ'
     expect(machine.to_wire).to eq({ 'Id' => 1 })
   end
+
+  it 'cascades validation into nested models' do
+    part_class = Class.new(Saasi::Base) do
+      attribute :code, :string
+      validates :code, presence: true
+    end
+    machine_class = Class.new(Saasi::Base) do
+      attribute :id, :integer
+      has_many :parts, part_class
+    end
+
+    machine = machine_class.new(parts: [{}])
+    expect(machine.valid?).to be false
+    expect(machine.errors[:parts]).to be_present
+
+    machine.parts = [{ code: 'A' }]
+    expect(machine.valid?).to be true
+  end
 end
 ```
 
@@ -494,11 +531,29 @@ end
     end
 ```
 
+Nested validation cascades — add to the `Base` class body (instance side):
+
+```ruby
+    validate :nested_models_are_valid
+
+    def nested_models_are_valid
+      self.class.nested_map.each_value do |nested|
+        Array(public_send(nested[:name])).each_with_index do |model, index|
+          next if model.valid?
+          model.errors.each do |error|
+            errors.add(nested[:name], "#{index}: #{error.attribute} #{error.message}")
+          end
+        end
+      end
+    end
+```
+
 `to_wire` gains nested serialisation and the read_only filter:
 
 ```ruby
     def to_wire
-      wire = extra.dup
+      # declared keys always win over stray extra entries, even when the declared value is nil
+      wire = extra.reject { |key, _| self.class.wire_map.key?(key) || self.class.nested_map.key?(key) }
       self.class.wire_map.each do |key, attr_name|
         next if self.class.read_only_names.include?(attr_name)
         value = public_send(attr_name)
@@ -558,7 +613,7 @@ class Saasi::Widget < Saasi::Base
   wraps Saasu::WidgetLegacy
   attribute :id,         :integer
   attribute :given_name, :string
-  validates :given_name, presence: { on: :create }
+  validates :given_name, presence: true
 end
 
 describe 'CRUD delegation' do
@@ -604,8 +659,22 @@ describe 'CRUD delegation' do
   end
 
   it 'raises ValidationError before any HTTP when invalid' do
-    expect { Saasi::Widget.create({}) }.to raise_error(Saasi::ValidationError, /Given name/)
+    expect { Saasi::Widget.create({}) }.to raise_error(Saasi::ValidationError) do |error|
+      expect(error.errors[:given_name]).to be_present # key-based: locale-independent
+    end
     expect(a_request(:post, 'https://api.saasu.com/widgetlegacy?FileId=777')).not_to have_been_made
+  end
+
+  it 'clears attributes and extras absent from the post-save response' do
+    stub_request(:post, 'https://api.saasu.com/widgetlegacy?FileId=777').
+      to_return(status: 200, body: { InsertedEntityId: 9 }.to_json, headers: { 'Content-Type' => 'application/json' })
+    stub_request(:get, 'https://api.saasu.com/widgetlegacy/9?FileId=777').
+      to_return(status: 200, body: { Id: 9 }.to_json, headers: { 'Content-Type' => 'application/json' })
+
+    widget = Saasi::Widget.new(given_name: 'Jack')
+    widget.save
+    expect(widget.id).to eq 9
+    expect(widget.given_name).to be_nil # not in the GET response — must not go stale
   end
 
   it 'deletes via the legacy class and clears the id' do
@@ -626,7 +695,8 @@ end
 ```ruby
       # class-level additions
       def find(id)
-        from_wire(wraps.find(id).attributes)
+        record = wraps.find(id)
+        from_wire(record.attributes) if record # legacy find returns nil on a blank 200 response
       end
 
       def all
@@ -668,7 +738,7 @@ end
 
     def delete
       result = self.class.wraps.new(to_wire).delete
-      self.id = nil if result && self.class.wire_map.value?(:id)
+      clear_identity! if result
       result
     end
 
@@ -677,11 +747,26 @@ end
     end
 
     def refresh_from(wire_hash)
+      # full reset first: fields absent from the response (write-only instructions,
+      # cleared values) must NOT survive as stale state
       @extra = {}
       self.class.nested_map.each_value do |nested|
         instance_variable_set("@#{nested[:name]}", nil)
       end
+      self.class.attribute_types.each_key do |name|
+        public_send("#{name}=", nil)
+      end
       assign_wire(wire_hash)
+    end
+
+    private
+
+    # id AND transaction_id: transaction resources fall back to transaction_id in #id,
+    # so clearing only id would leave the model looking persisted after deletion
+    def clear_identity!
+      %w(id transaction_id).each do |name|
+        public_send("#{name}=", nil) if self.class.attribute_types.key?(name)
+      end
     end
 ```
 
@@ -775,6 +860,11 @@ module Saasi
       attribute :summary,              :string
 
       validates :date_paid, :banked_to_account_id, :amount, presence: true
+      validate  :amount_has_at_most_two_decimals
+
+      def amount_has_at_most_two_decimals
+        errors.add(:amount, 'must have at most 2 decimal places') if amount && amount != amount.round(2)
+      end
     end
 
     class EmailMessage < Saasi::Base
@@ -871,6 +961,19 @@ module Saasi
       raise "QuickPayment can only be set when creating an invoice (the API accepts it on POST only)" if persisted? && quick_payment
       super
     end
+
+    # Non-CRUD helpers, delegated so migrated apps keep full method parity
+    def self.sales_stats_summary(params = {})
+      Saasu::Invoice.sales_stats_summary(params)
+    end
+
+    def email(email_address = nil)
+      self.class.wraps.new('Id' => id).email(email_address)
+    end
+
+    def generate_pdf(template_id = nil)
+      self.class.wraps.new('Id' => id).generate_pdf(template_id)
+    end
   end
 end
 ```
@@ -942,6 +1045,29 @@ describe Saasi::Invoice do
     invoice = Saasi::Invoice.from_wire(wire)
     invoice.quick_payment = { date_paid: '2026-08-06', banked_to_account_id: 1, amount: 10.0 }
     expect { invoice.save }.to raise_error(RuntimeError, /POST only/)
+  end
+
+  it 'no longer reports persisted after delete (TransactionId cleared too)' do
+    stub_request(:delete, 'https://api.saasu.com/invoice/33?FileId=777').
+      to_return(status: 200, body: { StatusMessage: 'Ok' }.to_json, headers: { 'Content-Type' => 'application/json' })
+
+    invoice = Saasi::Invoice.from_wire(wire)
+    expect(invoice.delete).to be true
+    expect(invoice).not_to be_persisted
+  end
+
+  it 'delegates the non-CRUD invoice helpers to the legacy class' do
+    stub_request(:get, 'https://api.saasu.com/Invoices/SalesStatsSummary?FileId=777').
+      to_return(status: 200, body: { Sales: 1 }.to_json, headers: { 'Content-Type' => 'application/json' })
+    expect(Saasi::Invoice.sales_stats_summary['Sales']).to eq 1
+
+    stub_request(:post, 'https://api.saasu.com/Invoice/33/email-contact?FileId=777').
+      to_return(status: 200, body: { StatusMessage: 'Ok' }.to_json, headers: { 'Content-Type' => 'application/json' })
+    expect(Saasi::Invoice.from_wire(wire).email['StatusMessage']).to eq 'Ok'
+
+    stub_request(:get, 'https://api.saasu.com/Invoice/33/generate-pdf?FileId=777').
+      to_return(status: 200, body: 'PDFBYTES')
+    expect(Saasi::Invoice.from_wire(wire).generate_pdf).to eq 'PDFBYTES'
   end
 end
 ```
@@ -1040,6 +1166,11 @@ module Saasi
     read_only :created_date_utc, :last_modified_date_utc, :last_modified_by_user_id
 
     validates :salutation, inclusion: { in: ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.'] }, allow_nil: true
+
+    # Non-CRUD helper parity with the legacy class
+    def generate_pdf(template_id = nil)
+      self.class.wraps.new('Id' => id).generate_pdf(template_id)
+    end
   end
 end
 ```
@@ -1650,6 +1781,8 @@ module Saasi
 
     has_many :attachments, AttachmentInfo
 
+    # Owner names are derived from the user record looked up via OwnerEmail —
+    # email is the assignment key (writable), the names are display fields.
     read_only :owner_first_name, :owner_last_name, :created_date_utc,
               :last_modified_date_utc, :attachments
 
@@ -1936,6 +2069,7 @@ module Saasi
   class DeletedEntity < Saasi::Base
     wraps Saasu::DeletedEntity
 
+    attribute :id,              :integer # never populated (tombstones carry no own id); satisfies Base#persisted?
     attribute :entity_type,     :string
     attribute :entity_id,       :integer
     attribute :deleted_by_user, :string
@@ -1996,6 +2130,11 @@ module Saasi
     def self.find(file_id)
       from_wire(Saasu::FileIdentity.find(file_id))
     end
+
+    # Legacy update is a bare PUT FileIdentity (no id in path); generic #save can't express it
+    def self.update(params)
+      Saasu::FileIdentity.update(params)
+    end
   end
 end
 ```
@@ -2054,8 +2193,9 @@ describe Saasi::FileIdentity do
   end
 
   it 'wraps the legacy query-param find' do
-    stub_request(:get, 'https://api.saasu.com/FileIdentity?FileId=777').
-      with(query: hash_including('FileId' => '888')).
+    # Faraday merges request params over the URL query string, so the final URL
+    # carries a single FileId=888 (the argument wins over Config.file_id)
+    stub_request(:get, 'https://api.saasu.com/FileIdentity?FileId=888').
       to_return(status: 200, body: { Name: 'Other Biz' }.to_json, headers: { 'Content-Type' => 'application/json' })
 
     expect(Saasi::FileIdentity.find(888).name).to eq 'Other Biz'
@@ -2063,7 +2203,7 @@ describe Saasi::FileIdentity do
 end
 ```
 
-Note for the FileIdentity find stub: the legacy method requests `FileIdentity?FileId=<Config.file_id>` with an additional `FileId=<arg>` query param; if the doubled param makes the exact stub fiddly, stub with `stub_request(:get, %r{https://api.saasu.com/FileIdentity}).with(query: hash_including('FileId' => '888'))`.
+If that exact stub fails because the runtime emits both FileId params, match with a block instead: `stub_request(:get, %r{https://api.saasu.com/FileIdentity}).with { |req| req.uri.query.split('&').include?('FileId=888') }` — assert the argument's value is present without assuming query normalisation.
 
 **Commit messages:** `Add Saasi::DeletedEntity typed model`, `Add Saasi::Brand typed model`, `Add Saasi::FileIdentity typed model`
 
@@ -2225,21 +2365,27 @@ describe Saasi::Search do
     stub_request(:post, 'https://api.saasu.com/authorisation/token').
       to_return(status: 200, body: { access_token: '12345', refresh_token: '67890', expires_in: 1000 }.to_json,
                 headers: { 'Content-Type' => 'application/json' })
+    # Fixture mirrors the .NET search DTO shapes (ContactSearchResponse /
+    # TransactionSearchResponse / InventoryItemSearchResponse): search results use
+    # 'Id' and search-specific display fields, not the full resource shape
     stub_request(:get, %r{https://api.saasu.com/search}).
       to_return(status: 200, body: {
-        'Contacts' => [{ 'Id' => 1, 'GivenName' => 'Jack' }],
-        'Transactions' => [{ 'TransactionId' => 2 }],
-        'InventoryItems' => [{ 'Id' => 3, 'Code' => 'BOOK' }],
+        'Contacts' => [{ 'Id' => 1, 'GivenName' => 'Jack', 'EntityType' => 'Contact' }],
+        'Transactions' => [{ 'Id' => 2, 'InvoiceNumber' => 'INV-2', 'Type' => 'S', 'Date' => '2026-08-01' }],
+        'InventoryItems' => [{ 'Id' => 3, 'Code' => 'BOOK', 'SellingPrice' => 25.5 }],
         'TotalContactsFound' => 1, 'TotalTransactionsFound' => 1, 'TotalInventoryItemsFound' => 1
       }.to_json, headers: { 'Content-Type' => 'application/json' })
   end
 
-  it 'returns Saasi-typed results' do
+  it 'returns Saasi-typed results, preserving search-only fields in extra' do
     search = Saasi::Search.new('Book')
     expect(search.contacts.first).to be_a(Saasi::Contact)
+    expect(search.contacts.first.extra['EntityType']).to eq 'Contact'
     expect(search.invoices.first).to be_a(Saasi::Invoice)
     expect(search.invoices.first.id).to eq 2
+    expect(search.invoices.first.extra['Type']).to eq 'S' # search DTO field, not an Invoice attribute
     expect(search.items.first.code).to eq 'BOOK'
+    expect(search.items.first.selling_price).to eq BigDecimal('25.5')
   end
 end
 ```
@@ -2413,3 +2559,13 @@ git commit -m "Document Saasi typed models and the Saasu -> Saasi migration path
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
+
+---
+
+## Appendix: Codex review adjudication (2026-08-06)
+
+Codex (session 019fd6c5-7075-7c50-a0b4-1e1a83a4c1d2) reviewed this plan and returned 25 findings. Disposition:
+
+**Accepted and applied** — #1 StringArrayType nil→[] (blocker; nil now stays nil); #2 delete leaves transaction_id (blocker; `clear_identity!`); #3 round-trip law vs read_only contradiction (blocker; law reworded to writable+undeclared keys); #7 refresh_from stale scalars (full attribute reset — this was a real bug: `send_email_to_contact` would have re-sent email on later updates); #8 extra/declared conflict (reject declared keys from extra copy); #9 fixture `presence: { on: }` mis-nesting (fixture simplified); #10 find nil-guard; #11 nested validation cascade (implemented — it delivers the feature's core promise); #12 FileIdentity.update delegation; #13 helper-method parity (Invoice email/generate_pdf/sales_stats_summary, Contact generate_pdf delegations added); #14 on: :create contradiction (blocker; resolved to UNCONDITIONAL presence — updates serialize the full payload, so required fields must be present in both contexts; spec doc amended); #16 DeletedEntity id; #19 long/byte type mapping; #22 ActiveModel floor raised to 6.1 (`errors.attribute_names`); #23 FileIdentity stub (Faraday param-merge documented + block-matcher fallback); #24 search fixture realism + extra-preservation assertions; #25 locale-independent error assertion. #15 partially: QuickPayment 2dp is a validation (parity with the legacy helper); amount-vs-invoice-total cross-check declined (server-side concern). #20 partially: a WebMock delegation test is now mandatory per resource (standard cycle); the full four-part matrix per resource declined as redundant with Base's suite. #6 partially: canonical datetime form narrowed to whole-second ISO8601; TimeWithZone handling declined (attributes cast to Time; TWZ can only enter via extra, which is untouched).
+
+**Declined with rationale** — #4 wire_map/wraps inheritance hardening: resource-subclassing-resource is not a use case; constrained instead by convention ("resources subclass Saasi::Base directly"). #5 BigDecimal→to_f precision: parity with the legacy layer, which already operates on JSON-parsed floats; ActiveSupport would encode BigDecimal as a JSON *string* and change the wire contract; ceiling documented. #17 sent_to_contact read-only: the .NET source marks it neither [Required] nor read-only; the source of truth wins over inference. #18 owner_email writable vs names read-only: intentional — email is the assignment key, names are derived; rationale now commented in the task. #21 precision-hiding test values: subsumed by the #5/#6 canonical-form decisions.
