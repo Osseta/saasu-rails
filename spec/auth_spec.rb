@@ -60,12 +60,31 @@ describe Saasu::Auth do
       expect(Saasu::Auth.instance_variable_get(:@access_token)).to eq 'fresh-token'
     end
 
-    it 'raises when the refresh is rejected' do
+    it 'falls back to a fresh password grant when the refresh is rejected (e.g. 12-month refresh-token expiry)' do
       Saasu::Auth.instance_variable_set(:@access_token, 'stale-token')
-      Saasu::Auth.instance_variable_set(:@refresh_token, 'refresh-me')
+      Saasu::Auth.instance_variable_set(:@refresh_token, 'expired-refresh')
       Saasu::Auth.instance_variable_set(:@token_expiry, DateTime.now - 1)
 
       stub_request(:post, 'https://api.saasu.com/authorisation/refresh').
+        to_return(status: 401, body: '')
+      stub_request(:post, 'https://api.saasu.com/authorisation/token').
+        to_return(status: 200, body: { access_token: 'fresh-grant', refresh_token: 'r2', expires_in: 1000 }.to_json,
+                  headers: {'Content-Type'=>'application/json'})
+
+      Saasu::Auth.authenticate
+
+      expect(Saasu::Auth.instance_variable_get(:@access_token)).to eq 'fresh-grant'
+      expect(a_request(:post, 'https://api.saasu.com/authorisation/token')).to have_been_made
+    end
+
+    it 'raises when both the refresh and the fallback grant are rejected' do
+      Saasu::Auth.instance_variable_set(:@access_token, 'stale-token')
+      Saasu::Auth.instance_variable_set(:@refresh_token, 'expired-refresh')
+      Saasu::Auth.instance_variable_set(:@token_expiry, DateTime.now - 1)
+
+      stub_request(:post, 'https://api.saasu.com/authorisation/refresh').
+        to_return(status: 401, body: '')
+      stub_request(:post, 'https://api.saasu.com/authorisation/token').
         to_return(status: 401, body: '')
 
       expect { Saasu::Auth.authenticate }.to raise_error(RuntimeError, /Failed to authenicate/)

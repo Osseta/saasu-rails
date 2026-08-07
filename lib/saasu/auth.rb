@@ -54,9 +54,9 @@ module Saasu
         request.body = { grant_type: 'refresh_token', refresh_token: @refresh_token }.to_json
       end
 
-      unless result.status == 200
-        raise "Failed to authenicate Saasu API. Please check your username and password."
-      end
+      # refresh tokens expire after 12 months — fall back to a fresh password
+      # grant rather than stranding long-lived integrations
+      return get_access_token unless result.status == 200
 
       @access_token = result.body['access_token']
       @token_expiry = DateTime.now + (result.body['expires_in']).to_i.seconds
