@@ -45,6 +45,18 @@ describe "Saasu::Payroll" do
     expect(Saasu::Payroll::Timesheet.find(4).id).to eq 4
   end
 
+  it 'Employee accepts the documented filters' do
+    expect {
+      Saasu::Payroll::Employee.validate_filters(IsActive: true, IncludeLeaveBalances: true, LeaveBalanceAsAtDate: '2026-08-01')
+    }.not_to raise_error
+  end
+
+  it 'Entitlement unwraps the Items collection key' do
+    stub_get('Payroll/Entitlements', { StatusMessage: 'Ok', Items: [{ Id: 1, Name: 'Annual Leave' }] })
+    entitlements = Saasu::Payroll::Entitlement.all
+    expect(entitlements.first['Name']).to eq 'Annual Leave'
+  end
+
   it 'Payslip.generate_pdf hits GET Payroll/Payslip/7/generate-pdf' do
     stub_get('Payroll/Payslip/7/generate-pdf', 'PDFDATA')
     expect(Saasu::Payroll::Payslip.generate_pdf(7)).to eq 'PDFDATA'
