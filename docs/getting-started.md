@@ -54,7 +54,7 @@ All options:
 | `password` | — | |
 | `file_id` | — | The Saasu file (organisation) every request targets; appended as `FileId=` to each request |
 | `api_url` | `https://api.saasu.com/` | Override for testing/sandboxes |
-| `scope` | `'full'` | OAuth scope string; supports context scopes, e.g. `'view fileid:1234'` |
+| `scope` | `'full'` | OAuth scope string; supports context scopes, e.g. `'view fileid:1234'`. Note: Saasu currently ignores incoming scopes ("may [support them] in the future"); the granted token's scope lists the file ids your login can access |
 | `two_factor_code` | `nil` | When set, authentication uses the `token-2fa` endpoint with this verification code |
 
 Configuration is process-global: one set of credentials and one `file_id` per
@@ -73,7 +73,19 @@ Saasu::Auth.ping   # GET authorisation/ping — cheap connectivity/credentials c
 ```
 
 Authentication failures raise a `RuntimeError` asking you to check your
-username and password.
+username and password. Two lifecycle details worth knowing: **refresh tokens
+expire after 12 months**, after which the next authentication falls back to a
+fresh password grant (automatic, since the gem holds your credentials), and
+accounts with **two-factor authentication** need a handshake:
+
+```ruby
+Saasu::Auth.request_two_factor_code   # => true — the API SMSes a code to the account's mobile
+Saasu::Config.two_factor_code = '123456'  # code the user received
+Saasu::Auth.ping                      # any request now authenticates via token-2fa
+```
+
+A plain request against a 2FA-protected account raises
+`Saasu::TwoFactorRequiredError` (also aliased as `Saasi::TwoFactorRequiredError`).
 
 ## First requests
 

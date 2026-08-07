@@ -108,7 +108,13 @@ You rarely call `to_wire` yourself, but its rules explain save behaviour:
   (`CreatedDateUtc`, `PaymentStatus`, `StockOnHand`, contact display names,
   invoice `Attachments`, ...) are readable on fetched models but excluded
   from write payloads — the API owns them.
-- `#extra` contents are merged in (declared attributes win on conflicts).
+- `#extra` contents are merged in (declared attributes win on conflicts), with
+  one exception: `_links` hypermedia is response-only and never sent back.
+
+One trap to know: **list endpoints return summaries.** An invoice from
+`.all`/`.where` has no `line_items`/`terms` (the API doesn't include them in
+list responses) — re-`find` the record before mutating and saving it, or the
+save will fail the `line_items` presence validation.
 
 ## Write-only fields (invoice)
 
@@ -141,9 +147,12 @@ invoice.save
   API's special shapes (query-param find; bare PUT update).
 - **`Saasi::InvoiceAttachment`** — `for_invoice`, `upload` (delegates the
   Base64 helper), `#decoded_data`.
-- **`Saasi::Payroll::*`** — *typed shells only*: the official SDK publishes no
-  payroll field contract, so these declare just `id` and pass every other
-  field through `#extra`. `Payslip` is a `generate_pdf` delegator.
+- **`Saasi::Payroll::*`** — fully typed from the live API docs: `Employee`
+  (read-only, with `leave_balances`), `Entitlement`, `PayrollEntry`
+  (`super_amount` maps the `Super` wire key), `LeaveRequest` (status enum,
+  end-after-start and 63-day rules, items required when `Approved`,
+  `LastModifiedDateUtc` as its concurrency token) and `Timesheet`. `Payslip`
+  is a `generate_pdf` delegator taking a payroll-entry id.
 - **`Saasi::LookupData` / `Saasi::Reports`** — constant aliases of the legacy
   raw-hash utility modules.
 - **`Saasi::TaxCode`, `Saasi::Brand`, `Saasi::DeletedEntity`** — read-only

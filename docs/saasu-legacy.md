@@ -27,6 +27,28 @@ These hold across gem releases until a major version says otherwise:
    legacy code in exactly two places: the gemspec (new `activemodel`
    dependency) and one `require "saasi"` line at the end of `lib/saasu.rb`.
 
+## Scope of the client (deliberate limitations)
+
+- **JSON only.** The API also speaks XML (via the `Content-Type` header); the
+  gem doesn't and won't.
+- **OAuth only.** The API still accepts the legacy `wsAccessKey=...&FileId=...`
+  query-string credentials ("will be phased out" per the docs); the gem
+  supports only the OAuth password grant.
+- **Version pinned.** Every request sends `X-Api-Version: 1.0` (the current
+  version). Omitting it would mean "latest"; the API keeps at most two prior
+  versions and signals deprecated calls via `rel: "deprecated"` hypermedia links.
+- **No rate-limit handling.** Saasu applies per-plan "Fair Play" limits (see
+  https://www.saasu.com/system-requirements/); the gem surfaces whatever the
+  server returns via `Saasu::Error` and does not retry.
+- **Hypermedia `_links`** blocks in responses are preserved for reading
+  (`collection.metadata['_links']`, `record['_links']`) but are stripped from
+  write payloads, as the API requires.
+- **Deprecated API fields** you shouldn't build on: `Company.LogoUrl`,
+  `Account.IncludePendingTransactions`, `FileIdentity.FileSettings` and the
+  `DateTimeFormatId`/`NumberFormatId` pairs (FileIdentity and User), the
+  `Invoice.InvoiceStatus` field (the filter remains valid), and the
+  `LookupData` DateFormats/NumberFormats endpoints.
+
 ## The CRUD surface
 
 Every resource class inherits the same surface from `Saasu::Base` (only the
@@ -61,9 +83,24 @@ Notes and sharp edges:
   Filter *values* are not validated — see `Saasu::Constants` below for the
   legal wire values.
 - **Dates in filters:** use `YYYY-MM-DD` strings. Date-range filters
-  (`*FromDate`/`*ToDate`) generally need both ends supplied together.
-- **Paging:** pass `Page:` and `PageSize:` to `.where`. `.all` is unpaged
-  (the API's first page); page metadata is on `collection.metadata`.
+  (`*FromDate`/`*ToDate`) must be supplied as pairs — the API documents each
+  end as requiring the other, on every list endpoint.
+- **Paging:** pass `Page:` and `PageSize:` to `.where`. `PageSize` defaults to
+  **25** and maxes at **100**, so `.all` returns the first 25 records, not
+  everything; page metadata is on `collection.metadata`. No paging exists on
+  Brands, BankAccountBalances, LookupData, Reports, or Payroll
+  Employees/Entitlements.
+- **Silent default windows:** `Payments` defaults to the **last month** when
+  no `PaymentFromDate`/`PaymentToDate` is given (and ignores `TransactionType`
+  when `ForInvoiceId` is supplied); `DeletedEntities` defaults to the
+  **last 24 hours** — a sync loop must pass explicit `UtcDeleted*` bounds.
+- **Concurrency:** responses carry `LastUpdatedId`; the API requires it on
+  subsequent updates to detect conflicting edits. The gem's save-then-refetch
+  flow keeps it current automatically — just don't strip it from attribute
+  hashes you build by hand.
+- **`SearchText` max 128 characters** (Items and Activities filters).
+- **`IsTaxInc` defaults to `false`** when omitted on invoice insert/update —
+  tax-inclusive amounts must set it explicitly.
 
 ## Special operations
 
@@ -90,8 +127,8 @@ attachment.decoded_data                            # Base64-decoded file content
 # Items
 item.build('Quantity' => 5)                        # assemble a combo item
 
-# Contacts
-contact.generate_pdf(template_id = nil)
+# Contacts — statement PDF (the only documented GenerateType; date range required)
+contact.generate_pdf(from_date: '2026-07-01', to_date: '2026-07-31')
 
 # Accounts
 Saasu::Account.bank_account_balances(params = {})
@@ -145,10 +182,16 @@ all collected (ported from the official .NET SDK) in `Saasu::Constants`:
 | `DELETED_ENTITY_TYPES` | `Sale, Purchase, SalePayment, PurchasePayment, Item, Contact, Journal` |
 | `SEARCH_SCOPES` / `SEARCH_TRANSACTION_TYPES` | see search above |
 | `OAUTH_SCOPES` | `view, modify, delete, full, fileid` (`fileid:1234` form) |
-| `INVOICE_LAYOUTS` | `item: 'I', service: 'S', purchase: 'P'` |
-| `INVOICE_TYPES` | `Tax Invoice, Sale Invoice, ... , Consignment` (16 values) |
+| `INVOICE_LAYOUTS` | `item: 'I', service: 'S'` (+ SDK-only `purchase: 'P'`) |
+| `INVOICE_TYPES` | 9 documented values (`Tax Invoice`, `Quote`, ...) + 7 SDK-only legacy values |
+| `INVOICE_TERMS_TYPES` / `INVOICE_TERMS_INTERVAL_TYPES` | trading-terms enums (`DueIn`, `Week`, ...) |
+| `PRINT_AS` | invoice PDF layouts: sale `4/93/99/98`, purchase `7/95/100` |
+| `FOR_ENTITY_TYPES` | invoice `ForEntityTypeId`: `sale: 4, shipping_slip: 98` |
+| `ACCOUNT_TYPE_FILTERS` / `ACCOUNT_LEVEL_FILTERS` | filter forms (`OtherIncome`, `detail`) — differ from the body-field forms |
+| `ACCOUNTING_METHODS` | `Accrual, Cash` (Reports) |
+| `LEAVE_REQUEST_STATUSES` | `Pending, Approved, Rejected` |
 | `TAX_CODES` | BAS codes: `sale_incl_gst: 'G1'`, `exp_incl_gst: 'G11'`, ... |
-| `AUTO_NUMBER` | `'<auto number>'` — sentinel for auto-generated invoice numbers |
+| `AUTO_NUMBER` | `'<Auto Number>'` — sentinel for auto-generated invoice numbers (the generated number appears as `InvoiceNumber` after the save refetch) |
 
 ## Raw-hash escape hatch
 

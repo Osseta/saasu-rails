@@ -53,8 +53,9 @@ These are the only ways a migrated class behaves differently:
    setters). Unknown *wire fields from the API* never raise — they flow into
    `#extra` and survive save round-trips. To write a field the model doesn't
    declare yet: `model.extra['NewField'] = value`.
-5. **Payroll models are untyped shells** (no official field contract exists):
-   read fields via `employee.extra['FirstName']`.
+5. **Leave-request and timesheet writes validate client-side** (status enum,
+   date-range rules, required items when approved) — payloads the server would
+   400 on are caught before HTTP.
 
 ## A worked migration
 
