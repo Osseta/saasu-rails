@@ -28,12 +28,45 @@ module Saasu
     # OAuth token scopes; fileid takes a context suffix, e.g. "fileid:1234"
     OAUTH_SCOPES = %w(view modify delete full fileid).freeze
 
+    # The live API docs list only I (Item Sale) and S (Service Sale); 'P' comes
+    # from the official .NET SDK and is kept for compatibility.
     INVOICE_LAYOUTS = { item: 'I', service: 'S', purchase: 'P' }.freeze
 
-    INVOICE_TYPES = ['Tax Invoice', 'Sale Invoice', 'Purchase Invoice', 'Adjustment Note',
-                     'Credit Note', 'Debit Note', 'Payment Invoice', 'RCT Invoice',
-                     'Money In (Income)', 'Money Out (Expense)', 'Purchase Order', 'Sale Order',
-                     'Quote', 'Pre-Quote Opportunity', 'Self-Billing', 'Consignment'].freeze
+    # The live API docs document only the first 9 values for new invoices; the
+    # remainder come from the official .NET SDK and may appear on existing
+    # records, so validations stay tolerant of the full list.
+    INVOICE_TYPES = ['Pre-Quote Opportunity', 'Quote', 'Purchase Order', 'Sale Order',
+                     'Tax Invoice', 'Adjustment Note', 'RCT Invoice',
+                     'Money In (Income)', 'Money Out (Expense)',
+                     'Sale Invoice', 'Purchase Invoice', 'Credit Note', 'Debit Note',
+                     'Payment Invoice', 'Self-Billing', 'Consignment'].freeze
+
+    # Invoice trading-terms enums (TypeEnum / IntervalTypeEnum wire values)
+    INVOICE_TERMS_TYPES = { unspecified: 'Unspecified', due_in: 'DueIn',
+                            due_in_eom_plus_x_days: 'DueInEomPlusXDays',
+                            cash_on_delivery: 'CashOnDelivery' }.freeze
+    INVOICE_TERMS_INTERVAL_TYPES = { unspecified: 'Unspecified', day: 'Day', week: 'Week',
+                                     month: 'Month', cash_on_delivery: 'CashOnDelivery',
+                                     year: 'Year' }.freeze
+
+    # PrintAs values for Invoice/:id/generate-pdf, per transaction type
+    PRINT_AS = {
+      sale:     { sale: 4, quote: 93, sale_order: 99, shipping_slip: 98 },
+      purchase: { purchase: 7, quote: 95, purchase_order: 100 },
+    }.freeze
+
+    # ForEntityTypeId values on the invoice payload (printing/sending)
+    FOR_ENTITY_TYPES = { sale: 4, shipping_slip: 98 }.freeze
+
+    # AccountType/AccountLevel FILTER values differ from the body-field forms in
+    # ACCOUNT_TYPES above: filters are unspaced/lowercased on the wire.
+    ACCOUNT_TYPE_FILTERS = %w(Income Expense Asset Equity Liability
+                              OtherIncome OtherExpense CostOfSales).freeze
+    ACCOUNT_LEVEL_FILTERS = %w(detail header).freeze
+
+    ACCOUNTING_METHODS = %w(Accrual Cash).freeze  # Reports/ProfitAndLoss AccountingMethod
+
+    LEAVE_REQUEST_STATUSES = %w(Pending Approved Rejected).freeze
 
     # BAS tax codes
     TAX_CODES = {
@@ -57,7 +90,9 @@ module Saasu
       luxury_car_tax_refundable: '1F',
     }.freeze
 
-    # Sentinel for auto-generated invoice numbers
-    AUTO_NUMBER = '<auto number>'.freeze
+    # Sentinel for auto-generated invoice numbers (casing per the live API docs;
+    # the generated number appears as GeneratedInvoiceNumber in the insert
+    # response and as InvoiceNumber on the follow-up GET)
+    AUTO_NUMBER = '<Auto Number>'.freeze
   end
 end

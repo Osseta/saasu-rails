@@ -18,6 +18,18 @@ describe Saasu::Constants do
     expect(Saasu::Constants::INVOICE_LAYOUTS[:service]).to eq 'S'
     expect(Saasu::Constants::INVOICE_TYPES).to include('Credit Note')
     expect(Saasu::Constants::TAX_CODES[:sale_incl_gst]).to eq 'G1'
-    expect(Saasu::Constants::AUTO_NUMBER).to eq '<auto number>'
+    expect(Saasu::Constants::AUTO_NUMBER).to eq '<Auto Number>'
+  end
+
+  it 'exposes the vocabularies from the live API docs' do
+    expect(Saasu::Constants::ACCOUNT_TYPE_FILTERS).to include('OtherIncome', 'CostOfSales')
+    expect(Saasu::Constants::ACCOUNT_LEVEL_FILTERS).to eq %w(detail header)
+    expect(Saasu::Constants::INVOICE_TERMS_TYPES[:due_in]).to eq 'DueIn'
+    expect(Saasu::Constants::INVOICE_TERMS_INTERVAL_TYPES[:week]).to eq 'Week'
+    expect(Saasu::Constants::PRINT_AS[:sale][:shipping_slip]).to eq 98
+    expect(Saasu::Constants::PRINT_AS[:purchase][:quote]).to eq 95
+    expect(Saasu::Constants::FOR_ENTITY_TYPES[:sale]).to eq 4
+    expect(Saasu::Constants::ACCOUNTING_METHODS).to eq %w(Accrual Cash)
+    expect(Saasu::Constants::LEAVE_REQUEST_STATUSES).to eq %w(Pending Approved Rejected)
   end
 end
