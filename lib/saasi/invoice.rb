@@ -72,6 +72,8 @@ module Saasi
     attribute :invoice_type,                       :string
     attribute :transaction_type,                   :string
     attribute :layout,                             :string
+    attribute :brand_id,                           :integer # 0/null = default brand (new theme PDF/email)
+    attribute :for_entity_type_id,                 :integer # Constants::FOR_ENTITY_TYPES
     attribute :summary,                            :string
     attribute :total_amount,                       :decimal
     attribute :total_tax_amount,                   :decimal
@@ -141,8 +143,8 @@ module Saasi
       self.class.wraps.new('Id' => id).email(email_address)
     end
 
-    def generate_pdf(template_id = nil)
-      self.class.wraps.new('Id' => id).generate_pdf(template_id)
+    def generate_pdf(template_id = nil, print_as: nil)
+      self.class.wraps.new('Id' => id).generate_pdf(template_id, print_as: print_as)
     end
   end
 end

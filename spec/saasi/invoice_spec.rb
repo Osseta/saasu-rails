@@ -26,6 +26,19 @@ describe Saasi::Invoice do
     expect(Saasi::Invoice.from_wire(wire).to_wire).to eq wire
   end
 
+  it 'types BrandId and ForEntityTypeId (docs-only fields, absent from the .NET SDK)' do
+    invoice = Saasi::Invoice.from_wire(wire.merge('BrandId' => 2, 'ForEntityTypeId' => 98))
+    expect(invoice.brand_id).to eq 2
+    expect(invoice.for_entity_type_id).to eq 98
+    expect(invoice.to_wire['BrandId']).to eq 2
+  end
+
+  it 'passes PrintAs to generate-pdf when given' do
+    stub_request(:get, 'https://api.saasu.com/Invoice/33/generate-pdf?FileId=777&PrintAs=98').
+      to_return(status: 200, body: 'PDFBYTES')
+    expect(Saasi::Invoice.from_wire(wire).generate_pdf(print_as: 98)).to eq 'PDFBYTES'
+  end
+
   it 'types the interesting fields' do
     invoice = Saasi::Invoice.from_wire(wire)
     expect(invoice.transaction_date).to eq Date.new(2026, 8, 6)
