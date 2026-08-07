@@ -59,6 +59,9 @@ module Saasi
     attribute :skype_id,                  :string
     attribute :linked_in_profile,         :string
     attribute :auto_send_statement,       :boolean
+    attribute :is_ocr_sender,             :boolean # default false server-side
+    attribute :ocr_recipient_alias,       :string
+    attribute :additional_emails,         :string  # comma-separated list in a single string
     attribute :is_partner,                :boolean
     attribute :is_customer,               :boolean
     attribute :is_supplier,               :boolean

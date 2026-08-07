@@ -35,6 +35,15 @@ describe Saasi::Contact do
     expect(contact.sale_trading_terms.trading_terms_interval).to eq 14
   end
 
+  it 'types the OCR and additional-email fields (docs-only, absent from the .NET SDK)' do
+    contact = Saasi::Contact.from_wire(wire.merge(
+      'IsOcrSender' => true, 'OcrRecipientAlias' => 'bills', 'AdditionalEmails' => 'a@x.com,b@x.com'
+    ))
+    expect(contact.is_ocr_sender).to be true
+    expect(contact.ocr_recipient_alias).to eq 'bills'
+    expect(contact.additional_emails).to eq 'a@x.com,b@x.com' # comma-separated string per the docs
+  end
+
   it 'validates salutation' do
     expect(Saasi::Contact.new(salutation: 'Lord')).not_to be_valid
     expect(Saasi::Contact.new(salutation: 'Dr.')).to be_valid

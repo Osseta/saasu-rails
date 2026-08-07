@@ -10,9 +10,25 @@ describe Saasi::FileIdentity do
                 headers: { 'Content-Type' => 'application/json' })
   end
 
-  it 'round-trips (PostCode wire key intact)' do
-    wire = { 'Name' => 'My Biz', 'PostCode' => '2000', 'FileSettings' => { 'SaleAmountsIncludeTax' => true }, 'Novel' => 'kept' }
-    expect(Saasi::FileIdentity.from_wire(wire).to_wire).to eq wire
+  it 'round-trips writable fields (PostCode wire key intact)' do
+    wire = { 'Name' => 'My Biz', 'PostCode' => '2000', 'IndustryTypeId' => 7,
+             'TaxRegistrationDate' => '2000-07-01', 'LastUpdatedId' => 'AAA=',
+             'FinancialYearEndMonth' => 6, 'Novel' => 'kept' }
+    identity = Saasi::FileIdentity.from_wire(wire)
+    expect(identity.industry_type_id).to eq 7
+    expect(identity.tax_registration_date).to eq Date.new(2000, 7, 1)
+    expect(identity.to_wire).to eq wire
+  end
+
+  it 'reads but never writes the immutable/deprecated fields' do
+    wire = { 'Name' => 'My Biz', 'Zone' => 'Australia', 'CurrencyCode' => 'AUD',
+             'CreatedDateUtc' => '2020-01-01T00:00:00Z',
+             'FileSettings' => { 'SaleAmountsIncludeTax' => true,
+                                 'SaleTradingTerms' => { 'TradingTermsType' => 1, 'TradingTermsInterval' => 14 } } }
+    identity = Saasi::FileIdentity.from_wire(wire)
+    expect(identity.zone).to eq 'Australia'
+    expect(identity.file_settings.sale_trading_terms.trading_terms_interval).to eq 14
+    expect(identity.to_wire).to eq({ 'Name' => 'My Biz' })
   end
 
   it 'wraps the legacy query-param find' do

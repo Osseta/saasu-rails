@@ -10,7 +10,20 @@ describe Saasi::Brand do
                 headers: { 'Content-Type' => 'application/json' })
   end
 
-  it 'round-trips with everything beyond id/name in extra' do
+  it 'types the full BrandDetail shape' do
+    wire = { 'Id' => 1, 'Name' => 'Main', 'IsDefault' => true,
+             'UseContactDetailsInFileIdentity' => false, 'WebsiteUrl' => 'https://x',
+             'EmailAddress' => 'b@x.com', 'PrimaryPhone' => '02 9999 9999',
+             'Street' => '1 Main St', 'City' => 'Sydney', 'PostCode' => '2000',
+             'CountryId' => 13 }
+    brand = Saasi::Brand.from_wire(wire)
+    expect(brand.is_default).to be true
+    expect(brand.post_code).to eq '2000'
+    expect(brand.country_id).to eq 13
+    expect(brand.to_wire).to eq wire
+  end
+
+  it 'round-trips with unknown fields in extra' do
     wire = { 'Id' => 1, 'Name' => 'Main', 'LogoBytes' => 'xxx' }
     brand = Saasi::Brand.from_wire(wire)
     expect(brand.extra).to eq({ 'LogoBytes' => 'xxx' })
