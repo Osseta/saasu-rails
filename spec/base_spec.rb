@@ -49,6 +49,18 @@ describe Saasu::Base do
 
       expect(a_request(:post, "https://api.saasu.com/test?FileId=777")).to have_been_made
     end
+
+    it 'strips response-only _links from the write payload' do
+      stub_request(:put, 'https://api.saasu.com/test/123?FileId=777').
+        with(body: { 'Id' => 123, 'Name' => 'Tester' }).
+        to_return(status: 200, body: { Id: 123 }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      record = Saasu::Test.new('Id' => 123, 'Name' => 'Tester',
+                               '_links' => [{ 'rel' => 'self', 'href' => '/x' }])
+      expect(record.save).to be true
+      expect(a_request(:put, 'https://api.saasu.com/test/123?FileId=777').
+        with(body: { 'Id' => 123, 'Name' => 'Tester' })).to have_been_made
+    end
   end
 
   describe "#create" do

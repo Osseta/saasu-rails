@@ -59,6 +59,16 @@ describe Saasi::Base do
       expect(widget.extra).to eq({ 'BrandNewApiField' => { 'Nested' => 1 } })
       expect(widget.to_wire).to eq wire
     end
+
+    it 'never serialises _links (response-only hypermedia), including nested models' do
+      machine = Saasi::TestMachine.from_wire(
+        'Id' => 1,
+        '_links' => [{ 'rel' => 'self', 'href' => '/x' }],
+        'Parts' => [{ 'Code' => 'A', '_links' => [{ 'rel' => 'self' }] }]
+      )
+      expect(machine.extra['_links']).to be_present # still readable
+      expect(machine.to_wire).to eq({ 'Id' => 1, 'Parts' => [{ 'Code' => 'A' }] })
+    end
   end
 
   describe '#to_wire' do

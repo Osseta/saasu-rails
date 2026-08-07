@@ -132,8 +132,9 @@ module Saasi
     end
 
     def to_wire
-      # declared keys always win over stray extra entries, even when the declared value is nil
-      wire = extra.reject { |key, _| self.class.wire_map.key?(key) || self.class.nested_map.key?(key) }
+      # declared keys always win over stray extra entries, even when the declared value is nil;
+      # _links is response-only hypermedia the API forbids sending back
+      wire = extra.reject { |key, _| key == '_links' || self.class.wire_map.key?(key) || self.class.nested_map.key?(key) }
       self.class.wire_map.each do |key, attr_name|
         next if self.class.read_only_names.include?(attr_name)
         # Use raw attribute value, not public_send — resources override readers (e.g., Invoice#id falls back to

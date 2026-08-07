@@ -56,12 +56,15 @@ module Saasu
     end
 
     def save
+      # _links is response-only hypermedia the API forbids sending back
+      payload = @attributes.except('_links')
+
       if self.id.present?
         validate_method_is_implemented_in_saasu_api(:update)
-        Saasu::Client.request(:put, self.class.resource_url(id), @attributes)
+        Saasu::Client.request(:put, self.class.resource_url(id), payload)
       else
         validate_method_is_implemented_in_saasu_api(:create)
-        self['Id'] = self.class.extract_inserted_id(Saasu::Client.request(:post, self.class.resource_url, @attributes))
+        self['Id'] = self.class.extract_inserted_id(Saasu::Client.request(:post, self.class.resource_url, payload))
       end
 
       @attributes = Saasu::Client.request(:get, self.class.resource_url(id))
