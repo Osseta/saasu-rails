@@ -80,9 +80,9 @@ module Saasi
 
     validates :salutation, inclusion: { in: ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.'] }, allow_nil: true
 
-    # Non-CRUD helper parity with the legacy class
-    def generate_pdf(template_id = nil)
-      self.class.wraps.new('Id' => id).generate_pdf(template_id)
+    # Non-CRUD helper parity with the legacy class (statement PDF)
+    def generate_pdf(from_date:, to_date:, generate_type: 'Statement')
+      self.class.wraps.new('Id' => id).generate_pdf(from_date: from_date, to_date: to_date, generate_type: generate_type)
     end
   end
 end

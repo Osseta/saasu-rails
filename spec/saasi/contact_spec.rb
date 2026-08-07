@@ -40,6 +40,14 @@ describe Saasi::Contact do
     expect(Saasi::Contact.new(salutation: 'Dr.')).to be_valid
   end
 
+  it 'generates a statement PDF with the documented params' do
+    stub_request(:get, 'https://api.saasu.com/Contact/5/generate-pdf?FileId=777&GenerateType=Statement&FromDate=2026-07-01&ToDate=2026-07-31').
+      to_return(status: 200, body: 'PDF')
+
+    contact = Saasi::Contact.from_wire(wire)
+    expect(contact.generate_pdf(from_date: '2026-07-01', to_date: '2026-07-31')).to eq 'PDF'
+  end
+
   it 'creates via the legacy class' do
     stub_request(:post, 'https://api.saasu.com/contact?FileId=777').
       with(body: { GivenName: 'Jack' }).

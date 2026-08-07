@@ -17,10 +17,15 @@ describe "additions to existing classes" do
     expect(Saasu::Account.bank_account_balances).to have_key('BankAccounts')
   end
 
-  it 'Contact#generate_pdf hits Contact/id/generate-pdf' do
-    stub_request(:get, "https://api.saasu.com/Contact/5/generate-pdf?FileId=777").
+  it 'Contact#generate_pdf sends the documented statement params' do
+    stub_request(:get, "https://api.saasu.com/Contact/5/generate-pdf?FileId=777&GenerateType=Statement&FromDate=2026-07-01&ToDate=2026-07-31").
       to_return(status: 200, body: 'PDF'.to_json, headers: {'Content-Type'=>'application/json'})
-    expect(Saasu::Contact.new(Id: 5).generate_pdf).to eq 'PDF'
+    pdf = Saasu::Contact.new(Id: 5).generate_pdf(from_date: '2026-07-01', to_date: '2026-07-31')
+    expect(pdf).to eq 'PDF'
+  end
+
+  it 'Contact#generate_pdf requires the statement date range' do
+    expect { Saasu::Contact.new(Id: 5).generate_pdf }.to raise_error(ArgumentError)
   end
 
   it 'Invoice.sales_stats_summary hits Invoices/SalesStatsSummary' do
