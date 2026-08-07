@@ -17,6 +17,32 @@ describe Saasu::Auth do
     Saasu::Auth.instance_variable_set(:@token_expiry, nil)
   end
 
+  describe "two-factor handshake" do
+    it 'requests an SMS code via token-2fa without a verification code' do
+      stub_request(:post, 'https://api.saasu.com/authorisation/token-2fa').
+        with(body: { grant_type: 'password', scope: 'full', username: 'user@saasu.com', password: 'password' }).
+        to_return(status: 401, body: { error: '2fa_code_required' }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      expect(Saasu::Auth.request_two_factor_code).to be true
+    end
+
+    it 'stores the token and returns false when the account has no 2FA' do
+      stub_request(:post, 'https://api.saasu.com/authorisation/token-2fa').
+        to_return(status: 200, body: { access_token: 'no2fa-token', refresh_token: 'r', expires_in: 1000 }.to_json,
+                  headers: {'Content-Type'=>'application/json'})
+
+      expect(Saasu::Auth.request_two_factor_code).to be false
+      expect(Saasu::Auth.instance_variable_get(:@access_token)).to eq 'no2fa-token'
+    end
+
+    it 'raises TwoFactorRequiredError when a plain grant is rejected pending 2FA' do
+      stub_request(:post, 'https://api.saasu.com/authorisation/token').
+        to_return(status: 401, body: { error: '2fa_code_required' }.to_json, headers: {'Content-Type'=>'application/json'})
+
+      expect { Saasu::Auth.authenticate }.to raise_error(Saasu::TwoFactorRequiredError)
+    end
+  end
+
   describe "token refresh" do
     it 'refreshes an expired token instead of re-requesting a password grant' do
       Saasu::Auth.instance_variable_set(:@access_token, 'stale-token')

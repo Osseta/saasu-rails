@@ -15,6 +15,10 @@ module Saasu
 
   class NotFoundError < Error; end
 
+  # Raised when a token grant is rejected pending two-factor verification
+  # (the API has SMSed a code; retry with Config.two_factor_code set)
+  class TwoFactorRequiredError < Error; end
+
   class Client
     class_attribute :connection
 

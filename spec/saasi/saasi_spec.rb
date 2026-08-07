@@ -4,6 +4,7 @@ describe Saasi do
   it 'aliases the HTTP error classes' do
     expect(Saasi::Error).to be Saasu::Error
     expect(Saasi::NotFoundError).to be Saasu::NotFoundError
+    expect(Saasi::TwoFactorRequiredError).to be Saasu::TwoFactorRequiredError
   end
 
   it 'delegates configuration to Saasu::Config' do

@@ -1,6 +1,7 @@
 module Saasi
   Error = Saasu::Error
   NotFoundError = Saasu::NotFoundError
+  TwoFactorRequiredError = Saasu::TwoFactorRequiredError
 
   class ValidationError < StandardError
     attr_reader :model
