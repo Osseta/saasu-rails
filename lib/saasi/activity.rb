@@ -33,6 +33,14 @@ module Saasi
     read_only :owner_first_name, :owner_last_name, :created_date_utc,
               :last_modified_date_utc, :attachments
 
-    validates :attached_to_type, inclusion: { in: Saasu::Constants::ATTACHED_TO_TYPES }, allow_nil: true
+    # case-insensitive: the docs list PascalCase values but API responses return lowercase
+    validate :attached_to_type_is_known
+
+    def attached_to_type_is_known
+      return if attached_to_type.nil?
+      return if Saasu::Constants::ATTACHED_TO_TYPES.any? { |t| t.casecmp?(attached_to_type) }
+
+      errors.add(:attached_to_type, 'is not included in the list')
+    end
   end
 end

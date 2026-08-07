@@ -19,9 +19,11 @@ describe Saasi::Activity do
     expect(Saasi::Activity.from_wire(wire).to_wire).to eq wire
   end
 
-  it 'validates AttachedToType' do
+  it 'validates AttachedToType case-insensitively (the API returns lowercase)' do
     expect(Saasi::Activity.new(attached_to_type: 'Planet')).not_to be_valid
     expect(Saasi::Activity.new(attached_to_type: 'Sale')).to be_valid
+    expect(Saasi::Activity.new(attached_to_type: 'sale')).to be_valid
+    expect(Saasi::Activity.new(attached_to_type: nil)).to be_valid
   end
 
   it 'lists via the legacy class' do
